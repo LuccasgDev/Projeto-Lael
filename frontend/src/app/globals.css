@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+:root {
+  --creme: #FFF8F0;
+  --soft-blue: #B9D8E8;
+  --deep-blue: #42677D;
+  --sage: #A9B8A0;
+  --terracotta: #D99A7B;
+  --charcoal: #29343A;
+  --card-bg: #FFFFFF;
+}
+
+@theme {
+  --color-creme: var(--creme);
+  --color-soft-blue: var(--soft-blue);
+  --color-deep-blue: var(--deep-blue);
+  --color-sage: var(--sage);
+  --color-terracotta: var(--terracotta);
+  --color-charcoal: var(--charcoal);
+}
+
+body {
+  background-color: var(--creme);
+  color: var(--charcoal);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Delicate Animations */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1deg);
+  }
+}
+
+@keyframes pulse-gentle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.animate-float {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.animate-pulse-gentle {
+  animation: pulse-gentle 3s ease-in-out infinite;
+}
+
+.animate-twinkle-1 {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.animate-twinkle-2 {
+  animation: twinkle 4s ease-in-out 1.5s infinite;
+}
+
+.animate-twinkle-3 {
+  animation: twinkle 2.5s ease-in-out 0.7s infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FFF8F0;
+}
+::-webkit-scrollbar-thumb {
+  background: #B9D8E8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #42677D;
+}
