@@ -1,0 +1,34 @@
+# Proxy reverso do Chá de Rifa do Lael — HTTPS automático via Caddy.
+# Substitua CHADERIFA.LOCAL pelo domínio real na publicação (ex.: chaderifalael.com.br).
+# Para testes locais sem domínio, use :80 ou um domínio *.localhost.
+
+{$SITE_DOMAIN::80} {
+	# Site público e painel (frontend Next.js)
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	# API do backend
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# Documentação OpenAPI
+	handle /docs* {
+		reverse_proxy backend:8000
+	}
+	handle /redoc* {
+		reverse_proxy backend:8000
+	}
+	handle /openapi.json {
+		reverse_proxy backend:8000
+	}
+
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

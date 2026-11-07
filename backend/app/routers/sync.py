@@ -110,3 +110,87 @@ async def import_csv_endpoint(
 
     res = import_products_from_dict_list(db, items, target_type=tipo, admin=admin)
     return res
+
+
+@router.post("/import-texto")
+def import_texto_endpoint(
+    payload: dict,
+    tipo: str = Query("mimo", regex="^(principal|mimo)$"),
+    db: Session = Depends(get_db),
+    admin: Admin = Depends(get_current_admin)
+):
+    """
+    §3 v2: importa mimos/fraldas a partir de TEXTO colado (ex.: cópia da lista da Amazon).
+
+    Formato aceito — um item por linha, campos separados por ';', '|' ou tabulação:
+        Nome do item; quantidade; preco (opcional)
+    Exemplos:
+        Toalha com capuz; 1; R$ 39,90
+        Chupeta silicone | 3 | 29,90
+        Livro de pano; 2
+    Linhas sem separador são tratadas como nome com quantidade 1 e sem preço.
+    Preço ausente fica nulo (informar manualmente no painel — RN-08 v2).
+    """
+    texto = (payload.get("texto") or "").strip()
+    if not texto:
+        raise HTTPException(status_code=400, detail="Envie o texto da lista no campo 'texto'.")
+
+    import re as _re
+
+    def _parse_preco(raw: str):
+        if not raw:
+            return None
+        m = _re.search(r"R?\$?\s*([0-9]+(?:\.[0-9]{3})*(?:,[0-9]{2})?|[0-9]+\.[0-9]{2})", raw)
+        if not m:
+            return None
+        valor = m.group(1)
+        # formato brasileiro: 1.234,56 -> 1234.56
+        if "," in valor:
+            valor = valor.replace(".", "").replace(",", ".")
+        try:
+            return float(valor)
+        except ValueError:
+            return None
+
+    items = []
+    erros = []
+    for linha in texto.splitlines():
+        linha = linha.strip()
+        if not linha or linha.lower().startswith(("item", "produto", "nome")):
+            continue
+        partes = [p.strip() for p in _re.split(r"[;|\t]", linha) if p.strip()]
+        if not partes:
+            continue
+        nome = partes[0]
+        if len(nome) > 255:
+            nome = nome[:255]
+        quantidade = 1
+        preco = None
+        for p in partes[1:]:
+            m_qtd = _re.fullmatch(r"(?:x|qtd\.?|quantidade\:?)?\s*(\d{1,3})\s*(?:un|unid\.?|x)?", p, _re.IGNORECASE)
+            if m_qtd and int(m_qtd.group(1)) <= 200:
+                quantidade = int(m_qtd.group(1))
+                continue
+            valor = _parse_preco(p)
+            if valor is not None and preco is None:
+                preco = valor
+        if not nome:
+            erros.append(f"Linha sem nome: '{linha[:80]}'")
+            continue
+        items.append({
+            "nome": nome,
+            "quantidade_desejada": quantidade,
+            "preco_atual": preco,
+        })
+
+    if not items:
+        raise HTTPException(
+            status_code=400,
+            detail=("Não foi possível interpretar nenhuma linha. Use: Nome; quantidade; preço — "
+                    "um item por linha, separado por ';', '|' ou tabulação.")
+        )
+
+    resultado = import_products_from_dict_list(db, items, target_type=tipo, admin=admin)
+    if erros:
+        resultado["avisos"] = erros
+    return resultado

@@ -1,15 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.models.models import Admin
 from backend.app.schemas.schemas import AdminLoginRequest, TokenResponse, AdminUserResponse
 from backend.app.services.auth_service import verify_password, create_access_token, get_current_admin
+from backend.app.services.rate_limit import login_limiter, enforce_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Autenticação"])
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: AdminLoginRequest, db: Session = Depends(get_db)):
+def login(payload: AdminLoginRequest, request: Request, db: Session = Depends(get_db)):
+    # Rate limiting contra força bruta (5 tentativas por IP / 5 minutos)
+    enforce_rate_limit(request, login_limiter, "Muitas tentativas de login. Aguarde alguns minutos e tente novamente.")
     admin = db.query(Admin).filter(Admin.email == payload.email.lower().strip()).first()
     if not admin or not verify_password(payload.senha, admin.senha_hash):
         raise HTTPException(

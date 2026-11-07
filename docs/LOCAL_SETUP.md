@@ -75,7 +75,7 @@ O site estará disponível em:
 
 - **URL:** `http://localhost:3000/admin`
 - **E-mail:** `admin@chaderifa.com.br`
-- **Senha:** `admin123`
+- **Senha:** a que você definir ao criar o administrador (`python -m backend.app.create_admin`) — não existe senha padrão
 
 ---
 

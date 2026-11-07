@@ -1,16 +1,29 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
+import hashlib
+import secrets
 import urllib.parse
 from sqlalchemy.orm import Session
-from sqlalchemy import select
 from fastapi import HTTPException, status
 
 from backend.app.config import settings
 from backend.app.models.models import (
     Numero, ProdutoPrincipal, Mimo, Reserva, Comprovante,
-    HistoricoAdmin, Configuracao, Admin
+    HistoricoAdmin, Configuracao, Admin, utcnow
 )
 from backend.app.schemas.schemas import ReservaCreateRequest
 from backend.app.services.stock_service import get_mimo_stock_info
+from backend.app.services.expiration_worker import check_and_expire_reservations
+
+
+def hash_tracking_token(token: str) -> str:
+    """Hash SHA-256 do token de acompanhamento (o token puro NUNCA é guardado)."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def money(value) -> Decimal:
+    """Normaliza qualquer valor monetário para Decimal com 2 casas (nunca float puro)."""
+    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def get_config_value(db: Session, key: str, default: str = "") -> str:
@@ -68,7 +81,11 @@ def build_whatsapp_message(
 def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
     """
     Transactional creation of a reservation with row-level integrity checks.
+    RN-06: a expiração é verificada também no ato da reserva — nunca depende do navegador.
     """
+    # 0. Expire overdue reservations first (never depends on the browser)
+    check_and_expire_reservations(db)
+
     # 1. Check and lock the chosen number
     numero_query = db.query(Numero).filter(Numero.id == payload.numero_id)
     if not settings.DATABASE_URL.startswith("sqlite"):
@@ -107,6 +124,18 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
             detail="Mimo selecionado não encontrado ou inativo"
         )
 
+    # RN-08 v2: Pix exige preço conhecido — não é possível congelar um valor nulo
+    if payload.forma_presente == "pix" and produto.preco_atual is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este presente não tem preço definido no momento (verifique na Amazon ou escolha comprar direto na Amazon)"
+        )
+    if payload.forma_mimo == "pix" and mimo.preco_atual is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este mimo não tem preço definido no momento (verifique na Amazon ou escolha comprar direto na Amazon)"
+        )
+
     stock_info = get_mimo_stock_info(db, mimo)
     if stock_info["disponibilidade_restante"] <= 0:
         raise HTTPException(
@@ -114,18 +143,18 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
             detail=f"O mimo '{mimo.nome}' esgotou durante a seleção. Por favor escolha outro mimo."
         )
 
-    # 4. Freeze prices at reservation time
-    preco_presente_reserva = round(float(produto.preco_atual), 2)
-    preco_mimo_reserva = round(float(mimo.preco_atual), 2)
+    # 4. Freeze prices at reservation time (RN-08, valores em Decimal)
+    preco_presente_reserva = money(produto.preco_atual if produto.preco_atual is not None else 0)
+    preco_mimo_reserva = money(mimo.preco_atual if mimo.preco_atual is not None else 0)
 
-    # 5. Calculate Pix total strictly according to independent choices
-    valor_pix_total = 0.0
+    # 5. Calculate Pix total strictly according to independent choices (RN-04)
+    valor_pix_total = Decimal("0.00")
     if payload.forma_presente == "pix":
         valor_pix_total += preco_presente_reserva
     if payload.forma_mimo == "pix":
         valor_pix_total += preco_mimo_reserva
 
-    valor_pix_total = round(valor_pix_total, 2)
+    valor_pix_total = money(valor_pix_total)
 
     # 6. Reservation deadline (default 72 hours)
     try:
@@ -133,8 +162,11 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
     except ValueError:
         prazo_horas = 72
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     expira_em = agora + timedelta(hours=prazo_horas)
+
+    # Token de acompanhamento: gerado uma vez, apenas o hash é persistido
+    tracking_token = secrets.token_urlsafe(24)
 
     # 7. Create Reservation
     reserva = Reserva(
@@ -151,6 +183,7 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
         status="reservada",
         criada_em=agora,
         expira_em=expira_em,
+        token_acompanhamento_hash=hash_tracking_token(tracking_token),
     )
     db.add(reserva)
     db.flush()
@@ -185,7 +218,7 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
 
     db.commit()
     db.refresh(reserva)
-    return reserva
+    return reserva, tracking_token
 
 
 def approve_or_reject_voucher(
@@ -199,7 +232,7 @@ def approve_or_reject_voucher(
     if not comp:
         raise HTTPException(status_code=404, detail="Comprovante não encontrado")
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     comp.status = novo_status
     comp.observacao_admin = observacao
 
@@ -251,7 +284,7 @@ def confirm_reservation(db: Session, reserva_id: int, admin: Admin) -> Reserva:
             detail=f"Não é possível confirmar: os seguintes comprovantes ainda não foram aprovados: {', '.join(pendentes)}"
         )
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     reserva.status = "confirmada"
     reserva.confirmada_em = agora
 
@@ -279,7 +312,7 @@ def release_reservation(db: Session, reserva_id: int, admin: Admin, motivo: str 
     if not reserva:
         raise HTTPException(status_code=404, detail="Reserva não encontrada")
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     numero_val = reserva.numero.numero
     reserva.status = "cancelada"
     reserva.numero.status = "disponivel"
@@ -308,7 +341,7 @@ def extend_reservation_deadline(db: Session, reserva_id: int, admin: Admin, hora
     if reserva.status != "reservada":
         raise HTTPException(status_code=400, detail="Apenas reservas com status 'reservada' podem ter seu prazo estendido")
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     # If already past expiration, extend from now
     base_time = reserva.expira_em if reserva.expira_em > agora else agora
     nova_expiracao = base_time + timedelta(hours=horas_adicionais)

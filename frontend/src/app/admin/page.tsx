@@ -10,9 +10,10 @@ import {
 import {
   adminLoginApi, fetchDashboardStats, fetchAdminReservations,
   actionVoucherApi, confirmReservationApi, releaseReservationApi,
-  extendReservationApi, fetchAdminProdutos, updateAdminProdutoPrice,
-  fetchAdminMimos, updateAdminMimoPrice, fetchAdminConfig,
+  extendReservationApi, fetchAdminProdutos, updateAdminProdutoPrice, updateAdminProduto,
+  fetchAdminMimos, updateAdminMimoPrice, updateAdminMimo, fetchAdminConfig,
   updateAdminConfig, fetchAuditLogs, getExportUrl,
+  fetchAdminNumeros, marcarCompraExternaApi, importarMimosTextoApi, regenerarFaixasApi,
   DashboardStats, ReservationAdminItem
 } from "@/lib/api";
 
@@ -21,8 +22,8 @@ export default function AdminPage() {
   const [adminName, setAdminName] = useState<string>("");
 
   // Login form state
-  const [loginEmail, setLoginEmail] = useState("admin@chaderifa.com.br");
-  const [loginSenha, setLoginSenha] = useState("admin123");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginSenha, setLoginSenha] = useState("");
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -40,6 +41,17 @@ export default function AdminPage() {
   // Products & Mimos
   const [produtos, setProdutos] = useState<any[]>([]);
   const [mimos, setMimos] = useState<any[]>([]);
+  // Importação de mimos por texto (§3 v2)
+  const [textoImportacao, setTextoImportacao] = useState("");
+  // Números (RN-10: compra externa)
+  const [numerosAdmin, setNumerosAdmin] = useState<any[]>([]);
+  const [numeroExterno, setNumeroExterno] = useState("");
+  const [origemExterna, setOrigemExterna] = useState("");
+  // Edição de fraldas (RN-01) e mimos (RN-09/RN-10)
+  const [editingProdutoId, setEditingProdutoId] = useState<number | null>(null);
+  const [produtoForm, setProdutoForm] = useState<any>(null);
+  const [editingMimoId, setEditingMimoId] = useState<number | null>(null);
+  const [mimoForm, setMimoForm] = useState<any>(null);
 
   // Settings
   const [configs, setConfigs] = useState<Record<string, string>>({});
@@ -81,6 +93,8 @@ export default function AdminPage() {
       } else if (activeTab === "presentes") {
         const data = await fetchAdminProdutos(token);
         setProdutos(data);
+        const nums = await fetchAdminNumeros(token);
+        setNumerosAdmin(nums);
       } else if (activeTab === "mimos") {
         const data = await fetchAdminMimos(token);
         setMimos(data);
@@ -204,6 +218,111 @@ export default function AdminPage() {
       loadTabData();
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar preço");
+    }
+  };
+
+  // RN-01: edição de fralda e regeneração de faixas
+  const openProdutoEditor = (p: any) => {
+    setEditingProdutoId(p.id);
+    setProdutoForm({
+      nome: p.nome,
+      tamanho: p.tamanho || "",
+      ordem_exibicao: p.ordem_exibicao ?? 0,
+      quantidade_desejada: p.quantidade_desejada ?? 1,
+      quantidade_comprada_externa: p.quantidade_comprada_externa ?? 0,
+      produto_url: p.produto_url || "",
+      imagem_url: p.imagem_url || "",
+      ativo: p.ativo !== false,
+    });
+  };
+
+  const handleSaveProduto = async () => {
+    if (!token || !produtoForm) return;
+    const qtd = parseInt(produtoForm.quantidade_desejada, 10);
+    const qtdExt = parseInt(produtoForm.quantidade_comprada_externa, 10) || 0;
+    if (!produtoForm.nome?.trim() || isNaN(qtd) || qtd < 1) {
+      alert("Informe um nome e uma quantidade desejada válida (mínimo 1).");
+      return;
+    }
+    try {
+      await updateAdminProduto(token, editingProdutoId!, {
+        nome: produtoForm.nome.trim(),
+        tamanho: produtoForm.tamanho || null,
+        ordem_exibicao: parseInt(produtoForm.ordem_exibicao, 10) || 0,
+        quantidade_desejada: qtd,
+        quantidade_comprada_externa: qtdExt,
+        produto_url: produtoForm.produto_url || null,
+        imagem_url: produtoForm.imagem_url || null,
+        ativo: !!produtoForm.ativo,
+        // campos não editados aqui são recarregados do objeto original
+        asin: produtos.find((p) => p.id === editingProdutoId)?.asin || null,
+        descricao: produtos.find((p) => p.id === editingProdutoId)?.descricao || null,
+        categoria: produtos.find((p) => p.id === editingProdutoId)?.categoria || "Fraldas",
+        preco_atual: produtos.find((p) => p.id === editingProdutoId)?.preco_atual ?? null,
+        preco_anterior: produtos.find((p) => p.id === editingProdutoId)?.preco_anterior ?? null,
+      });
+      showToast("Fralda atualizada! Use 'Regerar faixas' se as quantidades mudaram.");
+      setEditingProdutoId(null);
+      loadTabData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar fralda");
+    }
+  };
+
+  const handleRegenerarFaixas = async () => {
+    if (!token) return;
+    if (!confirm("Regerar as faixas de números conforme as quantidades e ordem atuais das fraldas?\n\nNúmeros reservados, confirmados ou marcados como compra externa NÃO serão alterados.")) return;
+    try {
+      const r = await regenerarFaixasApi(token);
+      showToast(r.message || "Faixas regeradas.");
+      loadTabData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao regerar faixas");
+    }
+  };
+
+  // RN-09/RN-10: edição de mimo
+  const openMimoEditor = (m: any) => {
+    setEditingMimoId(m.id);
+    setMimoForm({
+      nome: m.nome,
+      categoria: m.categoria || "",
+      quantidade_desejada: m.quantidade_desejada ?? 1,
+      quantidade_comprada_externa: m.quantidade_comprada_externa ?? 0,
+      produto_url: m.produto_url || "",
+      imagem_url: m.imagem_url || "",
+      ativo: m.ativo !== false,
+    });
+  };
+
+  const handleSaveMimo = async () => {
+    if (!token || !mimoForm) return;
+    const qtd = parseInt(mimoForm.quantidade_desejada, 10);
+    const qtdExt = parseInt(mimoForm.quantidade_comprada_externa, 10) || 0;
+    if (!mimoForm.nome?.trim() || isNaN(qtd) || qtd < 1) {
+      alert("Informe um nome e uma quantidade desejada válida (mínimo 1).");
+      return;
+    }
+    try {
+      const original = mimos.find((m) => m.id === editingMimoId);
+      await updateAdminMimo(token, editingMimoId!, {
+        nome: mimoForm.nome.trim(),
+        categoria: mimoForm.categoria || null,
+        quantidade_desejada: qtd,
+        quantidade_comprada_externa: qtdExt,
+        produto_url: mimoForm.produto_url || null,
+        imagem_url: mimoForm.imagem_url || null,
+        ativo: !!mimoForm.ativo,
+        asin: original?.asin || null,
+        descricao: original?.descricao || null,
+        preco_atual: original?.preco_atual ?? null,
+        preco_anterior: original?.preco_anterior ?? null,
+      });
+      showToast("Mimo atualizado com sucesso!");
+      setEditingMimoId(null);
+      loadTabData();
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar mimo");
     }
   };
 
@@ -391,6 +510,42 @@ export default function AdminPage() {
                 <span className="text-2xl font-black text-slate-900">{stats.numeros_confirmados}</span>
               </div>
             </div>
+
+            {/* RN-11: alerta de capacidade de mimos */}
+            {stats.alerta_capacidade_mimos && (
+              <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300 text-rose-900 text-xs sm:text-sm flex items-start gap-3">
+                <span className="text-lg">⚠️</span>
+                <span>
+                  <strong>Atenção:</strong> só há <strong>{stats.mimos_disponiveis_total}</strong> mimo(s) disponível(eis),
+                  mas existem <strong>{stats.numeros_nao_confirmados}</strong> número(s) ainda não confirmado(s).
+                  Cada reserva exige um mimo — amplie a lista ou registre as compras externas.
+                </span>
+              </div>
+            )}
+
+            {/* RN-01 v2: totais por tamanho de fralda */}
+            {stats.por_tamanho && stats.por_tamanho.length > 0 && (
+              <div className="bg-white p-5 rounded-2xl border border-[#B9D8E8] shadow-xs">
+                <h3 className="font-bold text-sm text-[#42677D] mb-3">Fraldas por tamanho</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {stats.por_tamanho.map((g) => (
+                    <div key={g.produto_id} className="p-3 rounded-xl bg-[#FFF8F0] border border-[#A9B8A0]/40">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-black text-[#D99A7B]">{g.tamanho}</span>
+                        {!g.ativo && <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">inativo</span>}
+                      </div>
+                      <span className="text-[10px] text-slate-500 block truncate mb-1.5" title={g.nome}>{g.nome}</span>
+                      <div className="text-[11px] space-y-0.5 text-slate-700">
+                        <div>🟢 {g.disponiveis} disponíveis</div>
+                        <div>🟡 {g.reservados} reservados</div>
+                        <div>⚪ {g.confirmados} confirmados</div>
+                        {g.compra_externa > 0 && <div>🛒 {g.compra_externa} compra externa</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Financial & Pending Highlights */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -700,19 +855,96 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ================= TAB: PRESENTES PRINCIPAIS ================= */}
+        {/* ================= TAB: PRESENTES PRINCIPAIS (FRALDAS) ================= */}
         {activeTab === "presentes" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-black text-[#42677D]">Presentes Principais (Lista de Talia)</h2>
-                <p className="text-xs text-slate-500">Gestão dos presentes vinculados aos números da rifa.</p>
+                <h2 className="text-xl font-black text-[#42677D]">Fraldas (Lista da Talia)</h2>
+                <p className="text-xs text-slate-500">Cada número equivale a uma fralda; os grupos seguem a ordem por tamanho (editável pelo administrador).</p>
               </div>
+              <button
+                onClick={handleRegenerarFaixas}
+                className="px-4 py-2 rounded-xl bg-[#A9B8A0] hover:bg-[#93a589] text-[#29343A] text-xs font-bold shadow-2xs cursor-pointer"
+                title="Reagrupa os números em faixas contínuas conforme as quantidades e a ordem atuais. Não altera números reservados, confirmados ou de compra externa."
+              >
+                ⟳ Regerar faixas de números
+              </button>
+            </div>
+
+            {/* RN-10: compra externa */}
+            <div className="bg-white p-4 rounded-2xl border border-[#B9D8E8] shadow-xs">
+              <h3 className="font-bold text-sm text-[#42677D] mb-1">🛒 Compra externa de fralda (RN-10)</h3>
+              <p className="text-[11px] text-slate-500 mb-3">
+                Alguém comprou uma fralda direto na lista da Amazon? Marque o número como ocupado — ele fica cinza para todos e a origem fica registrada.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Nº (ex.: 42)"
+                  value={numeroExterno}
+                  onChange={(e) => setNumeroExterno(e.target.value)}
+                  aria-label="Número ocupado por compra externa"
+                  className="w-28 px-3 py-2 text-xs bg-white rounded-xl border border-[#B9D8E8]"
+                />
+                <input
+                  type="text"
+                  placeholder="Origem (ex.: avó comprou na Amazon)"
+                  value={origemExterna}
+                  onChange={(e) => setOrigemExterna(e.target.value)}
+                  aria-label="Origem da compra externa"
+                  className="flex-1 px-3 py-2 text-xs bg-white rounded-xl border border-[#B9D8E8]"
+                />
+                <button
+                  onClick={async () => {
+                    try {
+                      const alvo = numerosAdmin.find((n: any) => n.numero === parseInt(numeroExterno, 10));
+                      if (!alvo) { showToast("Número não encontrado."); return; }
+                      const r = await marcarCompraExternaApi(token!, alvo.id, true, origemExterna || undefined);
+                      showToast(r.message || "Número marcado como compra externa.");
+                      setNumeroExterno(""); setOrigemExterna("");
+                      const nums = await fetchAdminNumeros(token!);
+                      setNumerosAdmin(nums);
+                    } catch (e: any) {
+                      showToast(e.message || "Erro ao marcar compra externa.");
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#42677D] text-white text-xs font-bold hover:bg-[#345264] cursor-pointer"
+                >
+                  Marcar como ocupado
+                </button>
+              </div>
+              {numerosAdmin.some((n: any) => n.status === "compra_externa") && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {numerosAdmin.filter((n: any) => n.status === "compra_externa").map((n: any) => (
+                    <button
+                      key={n.id}
+                      onClick={async () => {
+                        try {
+                          await marcarCompraExternaApi(token!, n.id, false);
+                          showToast(`Número ${String(n.numero).padStart(2, "0")} voltou a ficar disponível.`);
+                          const nums = await fetchAdminNumeros(token!);
+                          setNumerosAdmin(nums);
+                        } catch (e: any) {
+                          showToast(e.message || "Erro ao remover marcação.");
+                        }
+                      }}
+                      title={`${n.origem_ocupacao ?? "Compra externa"} — clique para devolver o número`}
+                      className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 text-[11px] font-bold hover:bg-rose-100 hover:text-rose-800 transition-colors cursor-pointer"
+                    >
+                      {String(n.numero).padStart(2, "0")} ✕
+                    </button>
+                  ))}
+                  <span className="text-[10px] text-slate-400 self-center">clique em um número para desfazer</span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {produtos.map((p) => (
-                <div key={p.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex gap-3">
+                <div key={p.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                  <div className="flex gap-3">
                   <div className="w-20 h-20 rounded-xl bg-slate-50 shrink-0 border border-slate-100 overflow-hidden flex items-center justify-center">
                     {p.imagem_url ? (
                       <img src={p.imagem_url} alt={p.nome} className="object-contain w-full h-full p-1" />
@@ -722,18 +954,32 @@ export default function AdminPage() {
                   </div>
 
                   <div className="flex-1">
-                    <span className="text-[10px] uppercase font-bold text-slate-500 block">{p.categoria}</span>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                      {p.tamanho ? `Tamanho ${p.tamanho} · ` : ""}{p.categoria}
+                    </span>
                     <h4 className="font-bold text-xs text-slate-800 line-clamp-1">{p.nome}</h4>
                     <span className="text-sm font-black text-[#42677D] block mt-1">
-                      R$ {p.preco_atual.toFixed(2).replace(".", ",")}
+                      {p.preco_atual === null || p.preco_atual === undefined
+                        ? <span className="text-[#D99A7B]">Preço a informar</span>
+                        : `R$ ${Number(p.preco_atual).toFixed(2).replace(".", ",")}`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block">
+                      Desejado: {p.quantidade_desejada} · Números: {(p.numeros_associados || []).length > 0 ? `${Math.min(...p.numeros_associados)}–${Math.max(...p.numeros_associados)}` : "—"}
+                      {!p.ativo ? " · INATIVA" : ""}
                     </span>
 
                     <div className="flex items-center gap-2 mt-2">
                       <button
-                        onClick={() => handleUpdatePrice(p.id, "produto", p.preco_atual)}
+                        onClick={() => handleUpdatePrice(p.id, "produto", p.preco_atual ?? 0)}
                         className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer"
                       >
-                        Editar Preço
+                        {p.preco_atual == null ? "Informar Preço" : "Editar Preço"}
+                      </button>
+                      <button
+                        onClick={() => (editingProdutoId === p.id ? setEditingProdutoId(null) : openProdutoEditor(p))}
+                        className="px-2 py-1 rounded-lg bg-[#B9D8E8] hover:bg-[#a5c8dc] text-[#42677D] text-[11px] font-bold cursor-pointer"
+                      >
+                        {editingProdutoId === p.id ? "Fechar" : "Editar"}
                       </button>
 
                       {p.produto_url && (
@@ -749,6 +995,86 @@ export default function AdminPage() {
                       )}
                     </div>
                   </div>
+                  </div>
+
+                  {editingProdutoId === p.id && produtoForm && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">Nome do produto</label>
+                      <input
+                        type="text"
+                        value={produtoForm.nome}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, nome: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="text-[10px] font-bold text-slate-500">Tamanho</label>
+                      <label className="text-[10px] font-bold text-slate-500">Ordem na grade</label>
+                      <input
+                        type="text"
+                        value={produtoForm.tamanho}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, tamanho: e.target.value })}
+                        placeholder="ex.: RN, P, M, G"
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <input
+                        type="number"
+                        value={produtoForm.ordem_exibicao}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, ordem_exibicao: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="text-[10px] font-bold text-slate-500">Unidades desejadas (números)</label>
+                      <label className="text-[10px] font-bold text-slate-500">Compradas fora do site</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={produtoForm.quantidade_desejada}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, quantidade_desejada: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        value={produtoForm.quantidade_comprada_externa}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, quantidade_comprada_externa: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">Link da Amazon</label>
+                      <input
+                        type="url"
+                        value={produtoForm.produto_url}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, produto_url: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">URL da imagem</label>
+                      <input
+                        type="url"
+                        value={produtoForm.imagem_url}
+                        onChange={(e) => setProdutoForm({ ...produtoForm, imagem_url: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={!!produtoForm.ativo}
+                          onChange={(e) => setProdutoForm({ ...produtoForm, ativo: e.target.checked })}
+                        />
+                        Fralda ativa (disponível para os números)
+                      </label>
+                      <div className="col-span-2 flex gap-2 pt-1">
+                        <button
+                          onClick={handleSaveProduto}
+                          className="px-4 py-1.5 rounded-lg bg-[#42677D] text-white text-xs font-bold cursor-pointer"
+                        >
+                          Salvar fralda
+                        </button>
+                        <button
+                          onClick={() => setEditingProdutoId(null)}
+                          className="px-4 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -765,9 +1091,43 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* §3/§5 v2: importação por texto colado */}
+            <div className="bg-white p-4 rounded-2xl border border-[#B9D8E8] shadow-xs">
+              <h3 className="font-bold text-sm text-[#42677D] mb-1">📋 Importar lista por texto</h3>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Cole a lista copiada da Amazon. Um item por linha, separado por ponto e vírgula: <code>Nome; quantidade; preço</code> (preço é opcional).
+              </p>
+              <textarea
+                value={textoImportacao}
+                onChange={(e) => setTextoImportacao(e.target.value)}
+                rows={4}
+                placeholder={"Toalha com capuz; 1; R$ 39,90\nChupeta silicone; 3; 29,90\nLivro de pano; 2"}
+                aria-label="Texto da lista de mimos para importação"
+                className="w-full px-3 py-2 text-xs bg-white rounded-xl border border-[#B9D8E8] font-mono"
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await importarMimosTextoApi(token!, textoImportacao);
+                    showToast(`Importação concluída: ${r.criados ?? 0} criados, ${r.atualizados ?? 0} atualizados.`);
+                    setTextoImportacao("");
+                    const data = await fetchAdminMimos(token!);
+                    setMimos(data);
+                  } catch (e: any) {
+                    showToast(e.message || "Erro na importação.");
+                  }
+                }}
+                disabled={!textoImportacao.trim()}
+                className="mt-2 px-4 py-2 rounded-xl bg-[#42677D] text-white text-xs font-bold hover:bg-[#345264] cursor-pointer disabled:opacity-40"
+              >
+                Importar mimos
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {mimos.map((m) => (
-                <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex gap-3">
+                <div key={m.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                  <div className="flex gap-3">
                   <div className="w-20 h-20 rounded-xl bg-slate-50 shrink-0 border border-slate-100 overflow-hidden flex items-center justify-center">
                     {m.imagem_url ? (
                       <img src={m.imagem_url} alt={m.nome} className="object-contain w-full h-full p-1" />
@@ -780,21 +1140,32 @@ export default function AdminPage() {
                     <span className="text-[10px] uppercase font-bold text-slate-500 block">{m.categoria}</span>
                     <h4 className="font-bold text-xs text-slate-800 line-clamp-1">{m.nome}</h4>
                     <span className="text-sm font-black text-[#42677D] block mt-1">
-                      R$ {m.preco_atual.toFixed(2).replace(".", ",")}
+                      {m.preco_atual === null || m.preco_atual === undefined
+                        ? <span className="text-[#D99A7B]">Preço a informar</span>
+                        : `R$ ${Number(m.preco_atual).toFixed(2).replace(".", ",")}`}
                     </span>
+                    {!m.ativo && <span className="text-[10px] font-bold text-rose-600">INATIVO</span>}
 
                     <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
                       <span>Desejado: <strong>{m.stock_info?.quantidade_desejada}</strong></span>
                       <span>•</span>
                       <span>Disponível: <strong className="text-emerald-700">{m.stock_info?.disponibilidade_restante}</strong></span>
+                      <span>•</span>
+                      <span>Externo: <strong>{m.stock_info?.quantidade_comprada_externa}</strong></span>
                     </div>
 
                     <div className="flex items-center gap-2 mt-2">
                       <button
-                        onClick={() => handleUpdatePrice(m.id, "mimo", m.preco_atual)}
+                        onClick={() => handleUpdatePrice(m.id, "mimo", m.preco_atual ?? 0)}
                         className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer"
                       >
-                        Editar Preço
+                        {m.preco_atual == null ? "Informar Preço" : "Editar Preço"}
+                      </button>
+                      <button
+                        onClick={() => (editingMimoId === m.id ? setEditingMimoId(null) : openMimoEditor(m))}
+                        className="px-2 py-1 rounded-lg bg-[#B9D8E8] hover:bg-[#a5c8dc] text-[#42677D] text-[11px] font-bold cursor-pointer"
+                      >
+                        {editingMimoId === m.id ? "Fechar" : "Editar"}
                       </button>
 
                       {m.produto_url && (
@@ -810,6 +1181,79 @@ export default function AdminPage() {
                       )}
                     </div>
                   </div>
+                  </div>
+
+                  {editingMimoId === m.id && mimoForm && (
+                    <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">Nome do mimo</label>
+                      <input
+                        type="text"
+                        value={mimoForm.nome}
+                        onChange={(e) => setMimoForm({ ...mimoForm, nome: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="text-[10px] font-bold text-slate-500">Categoria</label>
+                      <label className="text-[10px] font-bold text-slate-500">Quantidade desejada</label>
+                      <input
+                        type="text"
+                        value={mimoForm.categoria}
+                        onChange={(e) => setMimoForm({ ...mimoForm, categoria: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        value={mimoForm.quantidade_desejada}
+                        onChange={(e) => setMimoForm({ ...mimoForm, quantidade_desejada: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="text-[10px] font-bold text-slate-500">Compradas fora do site</label>
+                      <label className="text-[10px] font-bold text-slate-500">&nbsp;</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={mimoForm.quantidade_comprada_externa}
+                        onChange={(e) => setMimoForm({ ...mimoForm, quantidade_comprada_externa: e.target.value })}
+                        className="px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">Link da Amazon</label>
+                      <input
+                        type="url"
+                        value={mimoForm.produto_url}
+                        onChange={(e) => setMimoForm({ ...mimoForm, produto_url: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 text-[10px] font-bold text-slate-500">URL da imagem</label>
+                      <input
+                        type="url"
+                        value={mimoForm.imagem_url}
+                        onChange={(e) => setMimoForm({ ...mimoForm, imagem_url: e.target.value })}
+                        className="col-span-2 px-2 py-1.5 text-xs bg-slate-50 rounded-lg border border-slate-300"
+                      />
+                      <label className="col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={!!mimoForm.ativo}
+                          onChange={(e) => setMimoForm({ ...mimoForm, ativo: e.target.checked })}
+                        />
+                        Mimo ativo (visível para os convidados)
+                      </label>
+                      <div className="col-span-2 flex gap-2 pt-1">
+                        <button
+                          onClick={handleSaveMimo}
+                          className="px-4 py-1.5 rounded-lg bg-[#42677D] text-white text-xs font-bold cursor-pointer"
+                        >
+                          Salvar mimo
+                        </button>
+                        <button
+                          onClick={() => setEditingMimoId(null)}
+                          className="px-4 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-xs font-bold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

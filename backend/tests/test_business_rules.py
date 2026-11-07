@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from backend.app.models.models import Numero, Mimo, Reserva, Comprovante
+from backend.app.models.models import Numero, Mimo, Reserva, Comprovante, utcnow
 from backend.app.services.expiration_worker import check_and_expire_reservations
 
 
@@ -39,9 +39,9 @@ def test_four_acquisition_combinations_and_pix_totals(client, db_session):
 
         expected_pix = 0.0
         if f_pres == "pix":
-            expected_pix += preco_pres
+            expected_pix += float(preco_pres)
         if f_mimo == "pix":
-            expected_pix += preco_mimo
+            expected_pix += float(preco_mimo)
         expected_pix = round(expected_pix, 2)
 
         assert data["valor_pix_total"] == expected_pix
@@ -141,7 +141,7 @@ def test_automatic_expiration_worker(client, db_session):
 
     # Simulate expiration by moving expira_em 5 minutes into the past
     reserva = db_session.query(Reserva).filter(Reserva.id == reserva_id).first()
-    reserva.expira_em = datetime.utcnow() - timedelta(minutes=5)
+    reserva.expira_em = utcnow() - timedelta(minutes=5)
     db_session.commit()
 
     # Run the expiration worker

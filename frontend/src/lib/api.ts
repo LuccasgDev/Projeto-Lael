@@ -17,9 +17,11 @@ export interface PublicConfig {
 export interface GridItem {
   id: number;
   numero: number;
-  status: "disponivel" | "reservado" | "confirmado";
+  status: "disponivel" | "reservado" | "confirmado" | "compra_externa";
   nome_publico?: string | null;
+  produto_id?: number | null;
   produto_nome?: string | null;
+  produto_tamanho?: string | null;
   produto_imagem?: string | null;
 }
 
@@ -31,8 +33,9 @@ export interface ProdutoPrincipal {
   imagem_url?: string;
   produto_url?: string;
   categoria?: string;
-  preco_atual: number;
-  preco_anterior?: number;
+  tamanho?: string | null;
+  preco_atual: number | null;
+  preco_anterior?: number | null;
   preco_sincronizado_em?: string;
   quantidade_desejada: number;
   disponibilidade_restante: number;
@@ -53,8 +56,8 @@ export interface Mimo {
   imagem_url?: string;
   produto_url?: string;
   categoria?: string;
-  preco_atual: number;
-  preco_anterior?: number;
+  preco_atual: number | null;
+  preco_anterior?: number | null;
   preco_sincronizado_em?: string;
   disponibilidade_restante: number;
 }
@@ -89,6 +92,7 @@ export interface ReservationResponse {
   status: "reservada" | "confirmada" | "expirada" | "cancelada";
   criada_em: string;
   expira_em: string;
+  token_acompanhamento?: string;
   whatsapp_link: string;
   whatsapp_mensagem: string;
   comprovantes: Comprovante[];
@@ -105,6 +109,10 @@ export interface DashboardStats {
   valor_total_pix_pendente: number;
   top_presentes: { nome: string; total: number }[];
   top_mimos: { nome: string; total: number }[];
+  mimos_disponiveis_total: number;
+  numeros_nao_confirmados: number;
+  alerta_capacidade_mimos: boolean;
+  por_tamanho: { produto_id: number; tamanho: string; nome: string; ativo: boolean; total: number; disponiveis: number; reservados: number; confirmados: number; compra_externa: number }[];
 }
 
 export interface ReservationAdminItem {
@@ -282,12 +290,91 @@ export async function fetchAdminProdutos(token: string) {
   return res.json();
 }
 
+// RN-10: listagem de números e marcação de compra externa
+export async function fetchAdminNumeros(token: string) {
+  const res = await fetch(`${API_BASE_URL}/admin/numeros`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Erro ao carregar números");
+  return res.json();
+}
+
+export async function marcarCompraExternaApi(token: string, numeroId: number, marcar: boolean, origem?: string) {
+  const res = await fetch(`${API_BASE_URL}/admin/numeros/${numeroId}/compra-externa`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ marcar, origem }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Erro ao marcar compra externa");
+  }
+  return res.json();
+}
+
+// §3/§5 v2: importação de mimos por texto colado (lista da Amazon)
+export async function importarMimosTextoApi(token: string, texto: string) {
+  const res = await fetch(`${API_BASE_URL}/sync/import-texto?tipo=mimo`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ texto }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Erro ao importar texto");
+  }
+  return res.json();
+}
+
 export async function updateAdminProdutoPrice(token: string, id: number, preco: number) {
   const res = await fetch(`${API_BASE_URL}/admin/produtos/${id}/price?novo_preco=${preco}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Erro ao atualizar preço");
+  return res.json();
+}
+
+// RN-01 v2: edição completa da fralda (nome, tamanho, ordem, quantidades, link, imagem, ativo)
+export async function updateAdminProduto(token: string, id: number, data: {
+  asin?: string | null;
+  nome: string;
+  descricao?: string | null;
+  imagem_url?: string | null;
+  produto_url?: string | null;
+  categoria?: string | null;
+  tamanho?: string | null;
+  ordem_exibicao?: number;
+  preco_atual?: number | null;
+  preco_anterior?: number | null;
+  quantidade_desejada?: number;
+  quantidade_comprada_externa?: number;
+  ativo?: boolean;
+}) {
+  const res = await fetch(`${API_BASE_URL}/admin/produtos/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao salvar fralda");
+  }
+  return res.json();
+}
+
+// RN-01 v2: regera as faixas contínuas de números a partir das quantidades/tamanhos,
+// preservando números reservados, confirmados e marcados como compra externa.
+export async function regenerarFaixasApi(token: string) {
+  const res = await fetch(`${API_BASE_URL}/admin/numeros/regenerar-faixas`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao regerar faixas");
+  }
   return res.json();
 }
 
@@ -306,6 +393,32 @@ export async function updateAdminMimoPrice(token: string, id: number, preco: num
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Erro ao atualizar preço");
+  return res.json();
+}
+
+// RN-09/RN-10: edição completa do mimo (nome, categoria, quantidades, link, imagem, ativo)
+export async function updateAdminMimo(token: string, id: number, data: {
+  asin?: string | null;
+  nome: string;
+  descricao?: string | null;
+  imagem_url?: string | null;
+  produto_url?: string | null;
+  categoria?: string | null;
+  preco_atual?: number | null;
+  preco_anterior?: number | null;
+  quantidade_desejada?: number;
+  quantidade_comprada_externa?: number;
+  ativo?: boolean;
+}) {
+  const res = await fetch(`${API_BASE_URL}/admin/mimos/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao salvar mimo");
+  }
   return res.json();
 }
 
@@ -342,4 +455,15 @@ export async function fetchAuditLogs(token: string) {
 
 export function getExportUrl(type: "reservations" | "pix", format: "csv" | "xlsx", token: string) {
   return `${API_BASE_URL}/admin/export/${type}?format_type=${format}`;
+}
+
+
+// --- Acompanhamento (link secreto, sem login) ---
+export async function fetchAcompanhamento(token: string): Promise<ReservationResponse> {
+  const res = await fetch(`${API_BASE_URL}/public/acompanhamento/${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || "Link de acompanhamento inválido.");
+  }
+  return res.json();
 }

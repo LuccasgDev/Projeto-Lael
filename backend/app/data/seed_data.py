@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 from sqlalchemy.orm import Session
 
@@ -7,112 +6,96 @@ from backend.app.models.models import (
     Admin, ProdutoPrincipal, Mimo, Numero, Configuracao, HistoricoAdmin
 )
 from backend.app.services.auth_service import get_password_hash
+from backend.app.models.models import utcnow
+from backend.app.data.mimos_reais import SEED_MIMOS_REAIS
+from decimal import Decimal
 
 
-SEED_PRODUTOS_PRINCIPAIS = [
+# ============================================================
+# FRALDAS DA TALIA — DADOS REAIS da lista copiada pelo casal em
+# 06/11/2026 (tabela do briefing v2). Os 5 itens somam exatamente
+# 100 unidades, uma por número, em faixas contínuas:
+#   RN  01-10 · RN+ 11-20 · P 21-50 · M 51-75 · G 76-100
+# Preços mudam (ofertas/Black Friday); o painel é a fonte para
+# atualizar preço e data. Preço ausente fica NULO (o casal informa
+# manualmente — RN-08 v2): hoje só a fralda M ("Ver opções").
+# ============================================================
+SEED_FRALDAS_REAIS = [
     {
-        "asin": "B08N5M7S6L",
-        "nome": "Berço Portátil com Mosquiteiro e Trocador",
-        "categoria": "Mobiliário e Quarto",
-        "descricao": "Berço versátil dobrável com 2 alturas, trocador acoplado, bolsa de transporte e mosquiteiro.",
-        "preco_atual": 489.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/71Y8w4E1c7L._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B08N5M7S6L",
+        "asin": "B07GQB93FT",
+        "nome": "Pampers Primeiros Dias RN (até 4 kg), 36 un",
+        "tamanho": "RN",
+        "ordem_exibicao": 1,
+        "categoria": "Fraldas",
+        "descricao": "Fralda Pampers Primeiros Dias tamanho RN (até 4 kg), pacote com 36 unidades. Oferta em 06/11/2026: R$ 39,98 (antes R$ 52,83).",
+        "preco_atual": 39.98,
+        "preco_anterior": 52.83,
+        "produto_url": "https://www.amazon.com.br/dp/B07GQB93FT",
         "quantidade_desejada": 10,
+        "ativo": True,
     },
     {
-        "asin": "B0912K8J7P",
-        "nome": "Carrinho de Bebê com Bebê Conforto Voyage",
-        "categoria": "Passeio",
-        "descricao": "Conjunto Travel System completo, reclinável em modo berço, cinto de 5 pontos e capota retrátil.",
-        "preco_atual": 799.00,
-        "imagem_url": "https://m.media-amazon.com/images/I/61kM56gBfGL._AC_SL1200_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B0912K8J7P",
+        "asin": "B0GY6GG8R7",
+        "nome": "Pampers Recém Nascido RN+ (até 5 kg), 36 un",
+        "tamanho": "RN+",
+        "ordem_exibicao": 2,
+        "categoria": "Fraldas",
+        "descricao": "Fralda Pampers Recém Nascido tamanho RN+ (até 5 kg), pacote com 36 unidades. Oferta em 06/11/2026: R$ 45,13 (antes R$ 52,83).",
+        "preco_atual": 45.13,
+        "preco_anterior": 52.83,
+        "produto_url": "https://www.amazon.com.br/dp/B0GY6GG8R7",
         "quantidade_desejada": 10,
+        "ativo": True,
     },
     {
-        "asin": "B07P7J9L2B",
-        "nome": "Cadeira de Alimentação Portátil Chicco Pocket Snack",
-        "categoria": "Alimentação",
-        "descricao": "Compacta, leve e ajustável em 3 alturas. Bandeja removível e alça para transporte.",
-        "preco_atual": 249.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/61b7Lh8w2tL._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B07P7J9L2B",
-        "quantidade_desejada": 10,
+        "asin": "B07GQ136TS",
+        "nome": "Pampers Premium Care P, 40 un",
+        "tamanho": "P",
+        "ordem_exibicao": 3,
+        "categoria": "Fraldas",
+        "descricao": "Fralda Pampers Premium Care tamanho P, pacote com 40 unidades. Oferta em 06/11/2026: R$ 54,99 (antes R$ 71,67).",
+        "preco_atual": 54.99,
+        "preco_anterior": 71.67,
+        "produto_url": "https://www.amazon.com.br/dp/B07GQ136TS",
+        "quantidade_desejada": 30,
+        "ativo": True,
     },
     {
-        "asin": "B089K8T4W9",
-        "nome": "Kit Banheira Ergonômica com Suporte e Termômetro",
-        "categoria": "Banho e Higiene",
-        "descricao": "Banheira com suporte elevado, assento redutor ergonômico e mangueira de escoamento rápido.",
-        "preco_atual": 199.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/61G4w92T5fL._AC_SL1000_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B089K8T4W9",
-        "quantidade_desejada": 10,
+        "asin": "B07D3SVCTZ",
+        "nome": "Pampers Confort Sec M, 44 un",
+        "tamanho": "M",
+        "ordem_exibicao": 4,
+        "categoria": "Fraldas",
+        "descricao": "Fralda Pampers Confort Sec tamanho M, pacote com 44 unidades. Sem preço na lista em 06/11/2026 (Amazon mostra \"Ver opções de compra\"); informar manualmente no painel.",
+        "preco_atual": None,
+        "preco_anterior": None,
+        "produto_url": "https://www.amazon.com.br/dp/B07D3SVCTZ",
+        "quantidade_desejada": 25,
+        "ativo": True,
     },
     {
-        "asin": "B07XQ8N65V",
-        "nome": "Babá Eletrônica Digital com Câmera e Visão Noturna",
-        "categoria": "Segurança e Conforto",
-        "descricao": "Tela LCD 3.2 polegadas, áudio bidirecional, sensor de temperatura e canções de ninar integradas.",
-        "preco_atual": 329.00,
-        "imagem_url": "https://m.media-amazon.com/images/I/61Q6qQ4W4CL._AC_SL1200_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B07XQ8N65V",
-        "quantidade_desejada": 10,
-    },
-    {
-        "asin": "B08H9Q3W7P",
-        "nome": "Esterilizador e Aquecedor de Mamadeiras Digital",
-        "categoria": "Alimentação",
-        "descricao": "Esteriliza a vapor em 8 minutos e aquece leite materno ou fórmulas na temperatura ideal com display touch.",
-        "preco_atual": 179.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/61Vl+K8rZ4L._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B08H9Q3W7P",
-        "quantidade_desejada": 10,
-    },
-    {
-        "asin": "B07Z8L3K9Q",
-        "nome": "Mochila Maternidade Multifunção Térmica Impermeável",
-        "categoria": "Passeio e Cuidados",
-        "descricao": "Amplo espaço interno, bolsos térmicos para mamadeiras, compartimento impermeável para roupas úmidas e porta USB.",
-        "preco_atual": 159.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/71uV4j5o0iL._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B07Z8L3K9Q",
-        "quantidade_desejada": 10,
-    },
-    {
-        "asin": "B08C7P3R8M",
-        "nome": "Almofada de Amamentação Anatômica 100% Algodão",
-        "categoria": "Conforto",
-        "descricao": "Proporciona apoio perfeito para os braços da mãe e postura correta para o bebê durante as mamadas.",
-        "preco_atual": 129.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/61q3kY4c0sL._AC_SL1000_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B08C7P3R8M",
-        "quantidade_desejada": 10,
-    },
-    {
-        "asin": "B0947X2N1L",
-        "nome": "Kit Berço 100% Algodão 180 Fios Nuvem Celeste",
-        "categoria": "Enxoval",
-        "descricao": "Conjunto com protetores laterais almofadados, lençol com elástico, fronha e edredom antialérgico.",
-        "preco_atual": 269.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/71M3n0c0q0L._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B0947X2N1L",
-        "quantidade_desejada": 10,
-    },
-    {
-        "asin": "B08K9M3X5P",
-        "nome": "Tapete de Atividades com Arco de Brinquedos e Piano Musical",
-        "categoria": "Brinquedos e Desenvolvimento",
-        "descricao": "Estimula o desenvolvimento sensorial e motor com músicas interativas, chocalhos e cores suaves.",
-        "preco_atual": 189.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/71kC3lZ7FzL._AC_SL1500_.jpg",
-        "produto_url": "https://www.amazon.com.br/dp/B08K9M3X5P",
-        "quantidade_desejada": 10,
+        "asin": "B07X83MH7M",
+        "nome": "Pampers Premium Care Pants G, 68 un",
+        "tamanho": "G",
+        "ordem_exibicao": 5,
+        "categoria": "Fraldas",
+        "descricao": "Fralda Pampers Premium Care Pants tamanho G, pacote com 68 unidades. Oferta em 06/11/2026: R$ 93,90 (antes R$ 151,59).",
+        "preco_atual": 93.90,
+        "preco_anterior": 151.59,
+        "produto_url": "https://www.amazon.com.br/dp/B07X83MH7M",
+        "quantidade_desejada": 25,
+        "ativo": True,
     },
 ]
 
-SEED_MIMOS = [
+# Data da cópia da lista pelo casal (usada como preco_sincronizado_em inicial)
+# ============================================================
+# MIMOS DEMO — dados EXEMPLIFICATIVOS (NÃO são a lista real do Lucas).
+# Criados apenas em desenvolvimento (SEED_DEMO). A lista real do
+# Lucas (cerca de 58 itens, ~113 unidades) deve ser IMPORTADA via
+# texto/CSV/JSON no painel (aba Mimos → Importar lista por texto).
+# ============================================================
+SEED_MIMOS_DEMO = [
     {
         "asin": "B07P8N9B1V",
         "nome": "Kit 3 Paninhos de Boca Papi Soft 100% Algodão",
@@ -189,7 +172,7 @@ SEED_MIMOS = [
         "categoria": "Conforto",
         "descricao": "Bico de silicone macio com escudo leve e 4 orifícios de ventilação para pele sensível.",
         "preco_atual": 59.90,
-        "imagem_url": "https://m.media-amazon.com/images/I/61kM58uP2wL._AC_SL1500_.jpg",
+        "imagem_url": "https://m.media-amazon.com/images/I/616mWS8YBLL._AC_SL1200_.jpg",
         "produto_url": "https://www.amazon.com.br/dp/B07Y7M4K9Q",
         "quantidade_desejada": 10,
     },
@@ -225,106 +208,233 @@ DEFAULT_CONFIGS = {
     "banco_pix": "Nubank",
     "prazo_padrao_horas": "72",
     "total_numeros": "100",
-    "mensagem_inicial": "Sejam muito bem-vindos ao Chá de Rifa do Lael! Cada número representa uma bênção e o carinho da nossa família e amigos para a chegada do nosso menino em março de 2027, em Fortaleza — CE.",
+    "mensagem_inicial": "Sejam muito bem-vindos ao Chá de Rifa do Lael! Cada número representa uma fralda da lista da nossa família e amigos para a chegada do nosso menino em março de 2027, em Fortaleza — CE.",
     "mensagem_confirmacao": "Recebemos sua reserva com muito carinho! Para confirmar seu número, por favor nos envie os comprovantes da compra na Amazon e/ou do Pix pelo WhatsApp.",
     "mensagem_expiracao": "O prazo da sua reserva expirou e o número voltou a ficar disponível. Caso deseje contribuir, sinta-se à vontade para escolher um novo número!",
+    # LGPD: retenção de dados pessoais (dias) após a criação da reserva
+    "retencao_dias_preservacao": "180",
 }
+
+
+def _demo_enabled() -> bool:
+    """
+    Mimos DEMO (lista exemplificativa, NÃO é a lista real do Lucas):
+    criados apenas fora de produção. Em produção os mimos reais entram
+    por importação (texto/CSV/JSON) ou cadastro manual no painel.
+    """
+    import os
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    seed_demo = os.getenv("SEED_DEMO", "").lower()
+    if env == "production" or seed_demo == "false":
+        return False
+    return env != "production" or seed_demo == "true"
+
+
+def gerar_faixas_fraldas(fraldas_ordenadas):
+    """
+    RN-01 v2: gera as FAIXAS CONTÍNUAS de números por fralda, em ordem crescente.
+    Nunca intercala tamanhos. Ex.: RN 01-10, P 11-40, M 41-65, G 66-90, 5º 91-100.
+    """
+    faixas = []
+    numero_atual = 1
+    for fralda in fraldas_ordenadas:
+        faixas.append({
+            "fralda": fralda,
+            "inicio": numero_atual,
+            "fim": numero_atual + fralda.quantidade_desejada - 1,
+        })
+        numero_atual += fralda.quantidade_desejada
+    return faixas
 
 
 def init_database_seed():
     """
-    Creates tables and seeds default admin, settings, products, mimos and 100 raffle numbers.
+    Cria tabelas e popula o banco.
+
+    - FRALDAS: dados REAIS da lista da Talia (tabela do briefing v2), sempre
+      criados. Os 100 números são gerados a partir das quantidades desejadas,
+      agrupados por tamanho em ordem crescente (RN-01 v2).
+    - MIMOS: dados REAIS da lista do Lucas (58 itens / 113 unidades) sempre
+      semeados; a lista DEMO só é criada em desenvolvimento quando NÃO há
+      nenhum mimo cadastrado, e DEMO remanescentes são desativados.
+    - Administrador: criado SOMENTE via ADMIN_EMAIL/ADMIN_PASSWORD ou
+      `python -m backend.app.create_admin`. NUNCA há senha padrão.
     """
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
 
     try:
-        agora = datetime.utcnow()
+        import os
 
-        # 1. Admin
-        admin = db.query(Admin).filter(Admin.email == "admin@chaderifa.com.br").first()
-        if not admin:
-            admin = Admin(
-                nome="Talia e Lucas",
-                email="admin@chaderifa.com.br",
-                senha_hash=get_password_hash("admin123"),
-                ativo=True,
-                criado_em=agora,
-            )
-            db.add(admin)
-            db.flush()
+        # 1. Admin — somente via variáveis de ambiente (sem senha padrão)
+        admin_email = os.getenv("ADMIN_EMAIL", "").strip()
+        admin_password = os.getenv("ADMIN_PASSWORD", "").strip()
+        if admin_email and admin_password:
+            admin = db.query(Admin).filter(Admin.email == admin_email.lower()).first()
+            if not admin:
+                admin = Admin(
+                    nome="Talia e Lucas",
+                    email=admin_email.lower(),
+                    senha_hash=get_password_hash(admin_password),
+                    ativo=True,
+                    criado_em=utcnow(),
+                )
+                db.add(admin)
+                db.flush()
+                print(f"[SEED] Administrador '{admin_email}' criado a partir de variáveis de ambiente.")
 
         # 2. Configurations
         for k, v in DEFAULT_CONFIGS.items():
             cfg = db.query(Configuracao).filter(Configuracao.chave == k).first()
             if not cfg:
-                db.add(Configuracao(chave=k, valor=v, atualizado_em=agora))
+                db.add(Configuracao(chave=k, valor=v, atualizado_em=utcnow()))
 
-        # 3. Produtos Principais
-        produtos_map = []
-        for p_data in SEED_PRODUTOS_PRINCIPAIS:
-            existing = db.query(ProdutoPrincipal).filter(ProdutoPrincipal.asin == p_data["asin"]).first()
+        # 3. FRALDAS REAIS (RN-01 v2) — casa pelo TAMANHO do grupo;
+        #    atualiza apenas campos vazios (NUNCA sobrescreve preço ou link
+        #    informados manualmente pelo casal no painel — RN-08).
+        fraldas_map = []
+        for f_data in SEED_FRALDAS_REAIS:
+            existing = db.query(ProdutoPrincipal).filter(ProdutoPrincipal.tamanho == f_data["tamanho"]).first()
             if not existing:
+                preco = None
+                if f_data["preco_atual"] is not None:
+                    preco = Decimal(str(f_data["preco_atual"]))
+                preco_anterior = None
+                if f_data.get("preco_anterior") is not None:
+                    preco_anterior = Decimal(str(f_data["preco_anterior"]))
                 prod = ProdutoPrincipal(
-                    asin=p_data["asin"],
-                    nome=p_data["nome"],
-                    categoria=p_data["categoria"],
-                    descricao=p_data["descricao"],
-                    preco_atual=p_data["preco_atual"],
-                    preco_anterior=p_data["preco_atual"] * 1.15,
-                    preco_sincronizado_em=agora,
-                    imagem_url=p_data["imagem_url"],
-                    produto_url=p_data["produto_url"],
-                    quantidade_desejada=p_data["quantidade_desejada"],
+                    asin=f_data["asin"],
+                    nome=f_data["nome"],
+                    tamanho=f_data["tamanho"],
+                    ordem_exibicao=f_data["ordem_exibicao"],
+                    categoria=f_data["categoria"],
+                    descricao=f_data["descricao"],
+                    preco_atual=preco,
+                    preco_anterior=preco_anterior,
+                    preco_sincronizado_em=utcnow(),
+                    imagem_url=f_data.get("imagem_url"),
+                    produto_url=f_data["produto_url"],
+                    quantidade_desejada=f_data["quantidade_desejada"],
                     quantidade_comprada_externa=0,
-                    ativo=True,
-                    criado_em=agora,
+                    ativo=f_data["ativo"],
+                    criado_em=utcnow(),
                 )
                 db.add(prod)
                 db.flush()
-                produtos_map.append(prod)
+                fraldas_map.append(prod)
             else:
-                produtos_map.append(existing)
+                # Preenche só o que estiver vazio — edição manual do casal prevalece
+                if not existing.nome:
+                    existing.nome = f_data["nome"]
+                if existing.preco_atual is None and f_data["preco_atual"] is not None:
+                    existing.preco_atual = Decimal(str(f_data["preco_atual"]))
+                    existing.preco_sincronizado_em = utcnow()
+                if not existing.produto_url and f_data["produto_url"]:
+                    existing.produto_url = f_data["produto_url"]
+                if not existing.asin and f_data["asin"]:
+                    existing.asin = f_data["asin"]
+                fraldas_map.append(existing)
 
-        # 4. Mimos
-        for m_data in SEED_MIMOS:
-            existing_mimo = db.query(Mimo).filter(Mimo.asin == m_data["asin"]).first()
+        # 4a. MIMOS REAIS do Lucas (58 itens / 113 unidades, lista copiada em
+        #     06/11/2026) — sempre semeados, inclusive em produção. Casa pelo
+        #     NOME; atualiza apenas campos vazios (edição manual prevalece).
+        mimos_reais_criados = 0
+        for m_data in SEED_MIMOS_REAIS:
+            existing_mimo = db.query(Mimo).filter(Mimo.nome == m_data["nome"]).first()
             if not existing_mimo:
-                mimo = Mimo(
-                    asin=m_data["asin"],
+                preco = Decimal(str(m_data["preco_atual"])) if m_data["preco_atual"] is not None else None
+                preco_ant = Decimal(str(m_data["preco_anterior"])) if m_data.get("preco_anterior") is not None else None
+                db.add(Mimo(
+                    asin=None,
                     nome=m_data["nome"],
                     categoria=m_data["categoria"],
-                    descricao=m_data["descricao"],
-                    preco_atual=m_data["preco_atual"],
-                    preco_anterior=m_data["preco_atual"] * 1.12,
-                    preco_sincronizado_em=agora,
-                    imagem_url=m_data["imagem_url"],
-                    produto_url=m_data["produto_url"],
+                    descricao=m_data.get("descricao"),
+                    preco_atual=preco,
+                    preco_anterior=preco_ant,
+                    preco_sincronizado_em=utcnow(),
+                    imagem_url=None,
+                    produto_url=None,
                     quantidade_desejada=m_data["quantidade_desejada"],
                     quantidade_comprada_externa=0,
                     ativo=True,
-                    criado_em=agora,
-                )
-                db.add(mimo)
+                    criado_em=utcnow(),
+                ))
+                mimos_reais_criados += 1
+            else:
+                # Preenche só o que estiver vazio — edição manual do casal prevalece
+                if existing_mimo.preco_atual is None and m_data["preco_atual"] is not None:
+                    existing_mimo.preco_atual = Decimal(str(m_data["preco_atual"]))
+                    existing_mimo.preco_sincronizado_em = utcnow()
+                if existing_mimo.preco_anterior is None and m_data.get("preco_anterior") is not None:
+                    existing_mimo.preco_anterior = Decimal(str(m_data["preco_anterior"]))
+                if not existing_mimo.categoria and m_data["categoria"]:
+                    existing_mimo.categoria = m_data["categoria"]
+                if not existing_mimo.ativo:
+                    existing_mimo.ativo = True
 
-        # 5. 100 Raffle Numbers (01 to 100)
-        existing_numbers_count = db.query(Numero).count()
-        if existing_numbers_count < 100:
-            for num in range(1, 101):
+        # 4b. Mimos DEMO — apenas em desenvolvimento E somente se ainda não
+        #     houver mimos reais cadastrados (evita produto fictício no site).
+        #     Também desativa DEMO remanescentes de bancos antigos.
+        demo_asins = {m["asin"] for m in SEED_MIMOS_DEMO}
+        if _demo_enabled():
+            if db.query(Mimo).filter(Mimo.categoria.in_({m["categoria"] for m in SEED_MIMOS_REAIS})).count() == 0 \
+                    and db.query(Mimo).count() == 0:
+                for m_data in SEED_MIMOS_DEMO:
+                    existing_mimo = db.query(Mimo).filter(Mimo.asin == m_data["asin"]).first()
+                    if not existing_mimo:
+                        db.add(Mimo(
+                            asin=m_data["asin"],
+                            nome=m_data["nome"],
+                            categoria=m_data["categoria"],
+                            descricao=m_data["descricao"],
+                            preco_atual=Decimal(str(m_data["preco_atual"])),
+                            preco_sincronizado_em=utcnow(),
+                            imagem_url=m_data["imagem_url"],
+                            produto_url=m_data["produto_url"],
+                            quantidade_desejada=m_data["quantidade_desejada"],
+                            quantidade_comprada_externa=0,
+                            ativo=True,
+                            criado_em=utcnow(),
+                        ))
+        # Desativa mimos DEMO remanescentes (bancos de dev antigos) —
+        # nunca devem aparecer para convidados junto aos dados reais.
+        db.query(Mimo).filter(Mimo.asin.in_(demo_asins), Mimo.ativo == True).update(
+            {Mimo.ativo: False}, synchronize_session=False
+        )
+
+        # 5. Números gerados a partir das fraldas, em FAIXAS CONTÍNUAS por tamanho (RN-01 v2)
+        #    10 RN + 10 RN+ + 30 P + 25 M + 25 G = 100 — nunca intercalados
+        #    Faixas: RN 01-10 · RN+ 11-20 · P 21-50 · M 51-75 · G 76-100
+        fraldas_ordenadas = sorted(fraldas_map, key=lambda f: f.ordem_exibicao)
+        criados = 0
+        for faixa in gerar_faixas_fraldas(fraldas_ordenadas):
+            fralda = faixa["fralda"]
+            for num in range(faixa["inicio"], faixa["fim"] + 1):
                 existing_num = db.query(Numero).filter(Numero.numero == num).first()
                 if not existing_num:
-                    # Distribute products across numbers cyclically
-                    prod_for_num = produtos_map[(num - 1) % len(produtos_map)]
-                    numero = Numero(
+                    db.add(Numero(
                         numero=num,
-                        produto_principal_id=prod_for_num.id,
+                        produto_principal_id=fralda.id,
                         status="disponivel",
-                        criado_em=agora,
-                    )
-                    db.add(numero)
+                        criado_em=utcnow(),
+                    ))
+                    criados += 1
+                elif existing_num.produto_principal_id is None:
+                    existing_num.produto_principal_id = fralda.id
+
+        total_fraldas = sum(f.quantidade_desejada for f in fraldas_ordenadas)
+        cfg_total = db.query(Configuracao).filter(Configuracao.chave == "total_numeros").first()
+        if cfg_total and cfg_total.valor != str(total_fraldas):
+            cfg_total.valor = str(total_fraldas)
+            cfg_total.atualizado_em = utcnow()
 
         db.commit()
-        print("[SEED] Banco de dados inicializado com sucesso (Admin, Configs, 100 Números, Presentes e Mimos).")
+        total_mimos = db.query(Mimo).filter(Mimo.ativo == True).count()
+        print(f"[SEED] Banco inicializado: fraldas REAIS da Talia + {total_mimos} mimos ativos "
+              f"({mimos_reais_criados} da lista real do Lucas recém-importados).")
+        if not admin_email or not admin_password:
+            print("[SEED] Nenhum administrador criado. Use ADMIN_EMAIL/ADMIN_PASSWORD no ambiente "
+                  "ou execute: python -m backend.app.create_admin <email> <senha>")
     except Exception as e:
         db.rollback()
         print(f"[SEED] Erro ao inicializar seed: {e}")

@@ -37,5 +37,14 @@ def test_concurrent_reservation_same_number(client, db_session):
 
     # Second request immediately afterwards on the same number
     resp2 = client.post("/api/public/reserve", json=payload_guest2)
+    # 409: conflito — pode ser por número indisponível ou mimo esgotado por testes anteriores;
+    # o essencial é que NÃO existam duas reservas ativas para o mesmo número.
     assert resp2.status_code == 409
-    assert "não está mais disponível" in resp2.json()["detail"].lower()
+    db_session.refresh(num)
+    numero_indisponivel = ("não está mais disponível" in resp2.json()["detail"].lower())
+    if numero_indisponivel:
+        assert num.status == "reservado"
+    # Garantia final: apenas UMA reserva ativa para o número
+    from backend.app.models.models import Reserva
+    ativas = db_session.query(Reserva).filter(Reserva.numero_id == num.id, Reserva.status == "reservada").count()
+    assert ativas == 1

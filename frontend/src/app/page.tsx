@@ -42,6 +42,20 @@ export default function Home() {
     loadData();
   }, [loadData]);
 
+  // RN/§4: a grade consulta o backend periodicamente (polling a cada 12s) —
+  // o backend é a fonte definitiva da disponibilidade; nunca o navegador.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const grid = await fetchNumbersGrid();
+        setNumbers(grid);
+      } catch {
+        // silencioso: próxima tentativa do polling tenta de novo
+      }
+    }, 12000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleSelectNumber = async (num: number) => {
     try {
       const detail = await fetchNumberDetail(num);

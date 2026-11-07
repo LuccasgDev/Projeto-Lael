@@ -12,7 +12,7 @@ Este guia foi elaborado especialmente para vocês dois acompanharem, conferirem 
 2. Clique no botão **"Painel do Casal"** no canto superior direito (ou acerte `/admin` no final do endereço).
 3. Insira suas credenciais:
    - **E-mail:** `admin@chaderifa.com.br`
-   - **Senha:** `admin123`
+   - **Senha:** definida pelo casal na criação do administrador (via pessoa de confiança com conhecimento técnico) — não existe senha padrão
 4. Clique em **"Entrar no Painel"**.
 
 > **Dica:** Você pode alterar a senha de acesso a qualquer momento ou manter sua sessão conectada no celular.

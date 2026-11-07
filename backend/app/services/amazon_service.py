@@ -5,7 +5,7 @@ import httpx
 from bs4 import BeautifulSoup
 from sqlalchemy.orm import Session
 
-from backend.app.models.models import ProdutoPrincipal, Mimo, HistoricoAdmin, Admin
+from backend.app.models.models import ProdutoPrincipal, Mimo, HistoricoAdmin, Admin, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def import_products_from_dict_list(
     """
     created_count = 0
     updated_count = 0
-    agora = datetime.utcnow()
+    agora = utcnow()
 
     ModelClass = ProdutoPrincipal if target_type == "principal" else Mimo
 
@@ -96,7 +96,8 @@ def import_products_from_dict_list(
         if not nome:
             continue
 
-        preco = float(item.get("preco_atual") or item.get("price") or 0.0)
+        preco_raw = item.get("preco_atual") or item.get("price")
+        preco = float(preco_raw) if preco_raw not in (None, "", 0, "0") else None
         preco_anterior = item.get("preco_anterior")
         if preco_anterior:
             preco_anterior = float(preco_anterior)
@@ -116,7 +117,8 @@ def import_products_from_dict_list(
 
         if existing:
             existing.nome = nome
-            existing.preco_atual = preco
+            if preco is not None:
+                existing.preco_atual = preco
             if preco_anterior:
                 existing.preco_anterior = preco_anterior
             if imagem_url:
@@ -184,7 +186,7 @@ def manual_update_price(
     if not item:
         raise ValueError(f"{target_type.capitalize()} não encontrado.")
 
-    agora = datetime.utcnow()
+    agora = utcnow()
     preco_antigo = item.preco_atual
     item.preco_anterior = preco_antigo
     item.preco_atual = round(float(novo_preco), 2)

@@ -54,7 +54,10 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 $env:PYTHONPATH=".."
+$env:SEED_DEMO="true"
 python -c "from backend.app.data.seed_data import init_database_seed; init_database_seed()"
+# Administrador (obrigatório, sem senha padrão):
+python -m backend.app.create_admin admin@chaderifa.com.br SUA_SENHA_FORTE
 uvicorn backend.app.main:app --reload --port 8000
 
 # 2. Frontend (em outro terminal)
@@ -65,7 +68,7 @@ npm run dev
 
 Acesse:
 - **Site do Convidado:** `http://localhost:3000`
-- **Painel do Casal:** `http://localhost:3000/admin` (Login: `admin@chaderifa.com.br` | Senha: `admin123`)
+- **Painel do Casal:** `http://localhost:3000/admin` (crie o administrador com `python -m backend.app.create_admin <email> <senha>` — não existe senha padrão)
 - **Documentação Swagger:** `http://localhost:8000/docs`
 
 ---
@@ -89,7 +92,9 @@ $env:PYTHONPATH="."
 .\backend\venv\Scripts\pytest -v backend\tests
 ```
 
-**Resultado dos testes:**
+**Resultado dos testes (última execução): 17/17 backend + 8/8 frontend passando.**
+
+> ⚠️ Concorrência real contra PostgreSQL requer `TEST_DATABASE_URL` apontando para um PostgreSQL (Docker indisponível na máquina de desenvolvimento — ver `docs/STATUS.md`).
 - ✅ 4 combinações de formas de aquisição e cálculo do Pix.
 - ✅ Exigência estrita de aprovação dos 2 comprovantes para confirmação.
 - ✅ Worker de expiração automática de 72 horas.

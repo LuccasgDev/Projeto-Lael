@@ -1,5 +1,5 @@
 import urllib.parse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -14,6 +14,9 @@ from backend.app.services.reservation_service import (
     create_reservation, get_config_value, build_whatsapp_message
 )
 from backend.app.services.stock_service import get_mimo_stock_info, get_produto_principal_stock_info
+from backend.app.services.expiration_worker import check_and_expire_reservations
+from backend.app.services.reservation_service import hash_tracking_token
+from backend.app.services.rate_limit import reserve_limiter, enforce_rate_limit
 
 router = APIRouter(prefix="/public", tags=["Público"])
 
@@ -42,7 +45,9 @@ def get_public_config(db: Session = Depends(get_db)):
 def get_numbers_grid(db: Session = Depends(get_db)):
     """
     Returns the public 01-100 numbers grid with availability and privacy-safe display names.
+    RN-06: a leitura também dispara a verificação de expiração (nunca depende do navegador).
     """
+    check_and_expire_reservations(db)
     numeros = db.query(Numero).order_by(Numero.numero.asc()).all()
     result = []
 
@@ -69,7 +74,9 @@ def get_numbers_grid(db: Session = Depends(get_db)):
             numero=n.numero,
             status=n.status,
             nome_publico=nome_pub,
+            produto_id=n.produto_principal_id,
             produto_nome=prod_nome,
+            produto_tamanho=n.produto_principal.tamanho if n.produto_principal else None,
             produto_imagem=prod_img
         ))
 
@@ -81,6 +88,7 @@ def get_number_detail(num: int, db: Session = Depends(get_db)):
     """
     Returns full details for a chosen number, including associated main product.
     """
+    check_and_expire_reservations(db)
     numero = db.query(Numero).filter(Numero.numero == num).first()
     if not numero:
         raise HTTPException(status_code=404, detail="Número não encontrado")
@@ -96,6 +104,7 @@ def get_number_detail(num: int, db: Session = Depends(get_db)):
             imagem_url=numero.produto_principal.imagem_url,
             produto_url=numero.produto_principal.produto_url,
             categoria=numero.produto_principal.categoria,
+            tamanho=numero.produto_principal.tamanho,
             preco_atual=numero.produto_principal.preco_atual,
             preco_anterior=numero.produto_principal.preco_anterior,
             preco_sincronizado_em=numero.produto_principal.preco_sincronizado_em,
@@ -139,13 +148,87 @@ def get_available_mimos(db: Session = Depends(get_db)):
 
 
 @router.post("/reserve", response_model=ReservaPublicResponse)
-def make_reservation(payload: ReservaCreateRequest, db: Session = Depends(get_db)):
+def make_reservation(payload: ReservaCreateRequest, request: Request, db: Session = Depends(get_db)):
     """
     Creates a new reservation with independent choices and generates WhatsApp action URL.
     """
-    reserva = create_reservation(db, payload)
+    # Rate limiting anti-spam (10 tentativas por IP / minuto)
+    enforce_rate_limit(request, reserve_limiter, "Muitas tentativas de reserva. Aguarde um momento e tente novamente.")
+    reserva, tracking_token = create_reservation(db, payload)
 
     # Prepare WhatsApp data
+    whatsapp_casal = get_config_value(db, "whatsapp_casal", "85999998888")
+    chave_pix = get_config_value(db, "chave_pix", "")
+    titular_pix = get_config_value(db, "titular_pix", "")
+    banco_pix = get_config_value(db, "banco_pix", "")
+
+    presente_nome = reserva.numero.produto_principal.nome if reserva.numero.produto_principal else "Presente"
+    mimo_nome = reserva.mimo.nome if reserva.mimo else "Mimo"
+
+    msg = build_whatsapp_message(
+        reserva=reserva,
+        numero_val=reserva.numero.numero,
+        presente_nome=presente_nome,
+        mimo_nome=mimo_nome,
+        chave_pix=chave_pix,
+        titular_pix=titular_pix,
+        banco_pix=banco_pix
+    )
+
+    clean_phone = "".join(filter(str.isdigit, whatsapp_casal))
+    if not clean_phone.startswith("55") and len(clean_phone) in [10, 11]:
+        clean_phone = f"55{clean_phone}"
+
+    encoded_msg = urllib.parse.quote(msg)
+    wa_link = f"https://api.whatsapp.com/send?phone={clean_phone}&text={encoded_msg}"
+
+    comprovantes_pub = [
+        ComprovantePublic(
+            id=c.id,
+            tipo_item=c.tipo_item,
+            forma_aquisicao=c.forma_aquisicao,
+            status=c.status,
+            observacao_admin=c.observacao_admin
+        )
+        for c in reserva.comprovantes
+    ]
+
+    return ReservaPublicResponse(
+        id=reserva.id,
+        numero=reserva.numero.numero,
+        nome_convidado=reserva.nome_convidado,
+        whatsapp=reserva.whatsapp,
+        forma_presente=reserva.forma_presente,
+        forma_mimo=reserva.forma_mimo,
+        presente_nome=presente_nome,
+        presente_imagem=reserva.numero.produto_principal.imagem_url if reserva.numero.produto_principal else None,
+        presente_url=reserva.numero.produto_principal.produto_url if reserva.numero.produto_principal else None,
+        preco_presente_reserva=reserva.preco_presente_reserva,
+        mimo_nome=mimo_nome,
+        mimo_imagem=reserva.mimo.imagem_url if reserva.mimo else None,
+        mimo_url=reserva.mimo.produto_url if reserva.mimo else None,
+        preco_mimo_reserva=reserva.preco_mimo_reserva,
+        valor_pix_total=reserva.valor_pix_total,
+        status=reserva.status,
+        criada_em=reserva.criada_em,
+        expira_em=reserva.expira_em,
+        token_acompanhamento=tracking_token,
+        whatsapp_link=wa_link,
+        whatsapp_mensagem=msg,
+        comprovantes=comprovantes_pub
+    )
+
+
+@router.get("/reserve/{reserva_id}", response_model=ReservaPublicResponse)
+def get_reservation_status(reserva_id: int, db: Session = Depends(get_db)):
+    """
+    Returns public reservation view for guest confirmation tracking.
+    """
+    check_and_expire_reservations(db)
+    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva não encontrada")
+
     whatsapp_casal = get_config_value(db, "whatsapp_casal", "85999998888")
     chave_pix = get_config_value(db, "chave_pix", "")
     titular_pix = get_config_value(db, "titular_pix", "")
@@ -207,14 +290,17 @@ def make_reservation(payload: ReservaCreateRequest, db: Session = Depends(get_db
     )
 
 
-@router.get("/reserve/{reserva_id}", response_model=ReservaPublicResponse)
-def get_reservation_status(reserva_id: int, db: Session = Depends(get_db)):
+@router.get("/acompanhamento/{token}", response_model=ReservaPublicResponse)
+def get_reservation_by_tracking_token(token: str, db: Session = Depends(get_db)):
     """
-    Returns public reservation view for guest confirmation tracking.
+    Página de acompanhamento sem login: link secreto e não adivinhável (seção 4).
+    O token puro nunca é guardado; a busca é feita pelo hash SHA-256.
     """
-    reserva = db.query(Reserva).filter(Reserva.id == reserva_id).first()
+    check_and_expire_reservations(db)
+    token_hash = hash_tracking_token(token)
+    reserva = db.query(Reserva).filter(Reserva.token_acompanhamento_hash == token_hash).first()
     if not reserva:
-        raise HTTPException(status_code=404, detail="Reserva não encontrada")
+        raise HTTPException(status_code=404, detail="Link de acompanhamento inválido ou expirado")
 
     whatsapp_casal = get_config_value(db, "whatsapp_casal", "85999998888")
     chave_pix = get_config_value(db, "chave_pix", "")
@@ -271,6 +357,7 @@ def get_reservation_status(reserva_id: int, db: Session = Depends(get_db)):
         status=reserva.status,
         criada_em=reserva.criada_em,
         expira_em=reserva.expira_em,
+        token_acompanhamento=token,
         whatsapp_link=wa_link,
         whatsapp_mensagem=msg,
         comprovantes=comprovantes_pub

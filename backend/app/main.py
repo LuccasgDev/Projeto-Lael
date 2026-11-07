@@ -17,6 +17,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+if settings.SECRET_KEY == "lael-super-secret-security-key-2027-cha-de-bebe-fortaleza":
+    logger.warning(
+        "[SEGURANCA] SECRET_KEY padrao em uso! Defina SECRET_KEY em variaveis de "
+        "ambiente antes de publicar em producao."
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,13 +56,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS configuration
+# CORS configuration — restrito às origens configuradas (§7 Segurança)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permits local development and mobile web access
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Routers

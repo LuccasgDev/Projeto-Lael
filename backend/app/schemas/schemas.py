@@ -14,7 +14,8 @@ class ProdutoPrincipalPublic(BaseModel):
     imagem_url: Optional[str] = None
     produto_url: Optional[str] = None
     categoria: Optional[str] = None
-    preco_atual: float
+    tamanho: Optional[str] = None
+    preco_atual: Optional[float] = None  # nulo = sem preço na lista; admin informa manualmente (RN-08 v2)
     preco_anterior: Optional[float] = None
     preco_sincronizado_em: Optional[datetime] = None
     quantidade_desejada: int
@@ -32,7 +33,7 @@ class MimoPublic(BaseModel):
     imagem_url: Optional[str] = None
     produto_url: Optional[str] = None
     categoria: Optional[str] = None
-    preco_atual: float
+    preco_atual: Optional[float] = None  # nulo = sem preço informado ainda
     preco_anterior: Optional[float] = None
     preco_sincronizado_em: Optional[datetime] = None
     disponibilidade_restante: int
@@ -44,9 +45,11 @@ class MimoPublic(BaseModel):
 class NumeroGridItem(BaseModel):
     id: int
     numero: int
-    status: str  # disponivel, reservado, confirmado
+    status: str  # disponivel, reservado, confirmado, compra_externa
     nome_publico: Optional[str] = None
+    produto_id: Optional[int] = None
     produto_nome: Optional[str] = None
+    produto_tamanho: Optional[str] = None
     produto_imagem: Optional[str] = None
 
     class Config:
@@ -128,6 +131,7 @@ class ReservaPublicResponse(BaseModel):
     status: str
     criada_em: datetime
     expira_em: datetime
+    token_acompanhamento: Optional[str] = None
     whatsapp_link: str
     whatsapp_mensagem: str
     comprovantes: List[ComprovantePublic] = []
@@ -209,6 +213,7 @@ class ReservaAdminItem(BaseModel):
     expira_em: datetime
     confirmada_em: Optional[datetime] = None
     presente_nome: str
+    presente_tamanho: Optional[str] = None  # RN-01 v2: tamanho da fralda reservada
     mimo_nome: str
     comprovantes: List[ComprovanteAdminResponse] = []
     pode_confirmar: bool
@@ -245,6 +250,12 @@ class DashboardStatsResponse(BaseModel):
     valor_total_pix_pendente: float
     top_presentes: List[Dict[str, Any]]
     top_mimos: List[Dict[str, Any]]
+    # RN-11: alerta de capacidade de mimos
+    mimos_disponiveis_total: int = 0
+    numeros_nao_confirmados: int = 0
+    alerta_capacidade_mimos: bool = False
+    # RN-01 v2: totais por tamanho de fralda
+    por_tamanho: List[Dict[str, Any]] = []
 
 
 class ProdutoPrincipalCreateUpdate(BaseModel):
@@ -254,7 +265,9 @@ class ProdutoPrincipalCreateUpdate(BaseModel):
     imagem_url: Optional[str] = None
     produto_url: Optional[str] = None
     categoria: Optional[str] = None
-    preco_atual: float
+    tamanho: Optional[str] = None  # RN-01 v2: tamanho da fralda
+    ordem_exibicao: int = 0  # RN-01 v2: ordem dos grupos (editável)
+    preco_atual: Optional[float] = None  # nulo permitido: admin informa manualmente
     preco_anterior: Optional[float] = None
     quantidade_desejada: int = 1
     quantidade_comprada_externa: int = 0
@@ -268,7 +281,7 @@ class MimoCreateUpdate(BaseModel):
     imagem_url: Optional[str] = None
     produto_url: Optional[str] = None
     categoria: Optional[str] = None
-    preco_atual: float
+    preco_atual: Optional[float] = None
     preco_anterior: Optional[float] = None
     quantidade_desejada: int = 1
     quantidade_comprada_externa: int = 0
