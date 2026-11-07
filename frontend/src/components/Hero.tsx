@@ -67,7 +67,7 @@ export default function Hero({ onChooseNumber }: { onChooseNumber: () => void })
           <div className="bg-white/70 backdrop-blur-xs p-3 rounded-xl border border-[#B9D8E8]/50 shadow-2xs">
             <span className="text-xl block mb-1">🎁</span>
             <span className="text-xs font-bold text-[#42677D] block">Presente + Mimo</span>
-            <span className="text-[11px] text-[#29343A]/70">Amazon ou Pix</span>
+            <span className="text-[11px] text-[#29343A]/70">Amazon, Loja ou Pix</span>
           </div>
 
           <div className="bg-white/70 backdrop-blur-xs p-3 rounded-xl border border-[#B9D8E8]/50 shadow-2xs">

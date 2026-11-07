@@ -705,14 +705,14 @@ export default function AdminPage() {
                             <td className="p-3">
                               <span className="font-medium text-slate-800 block truncate max-w-[140px]">{r.presente_nome}</span>
                               <span className="text-[10px] text-slate-500">
-                                {r.forma_presente === "amazon" ? "📦 Amazon" : `💸 Pix (R$ ${r.preco_presente_reserva.toFixed(2)})`}
+                                {r.forma_presente === "amazon" ? "📦 Amazon" : r.forma_presente === "local" ? "🛍️ Loja Física" : `💸 Pix (R$ ${r.preco_presente_reserva.toFixed(2)})`}
                               </span>
                             </td>
 
                             <td className="p-3">
                               <span className="font-medium text-slate-800 block truncate max-w-[140px]">{r.mimo_nome}</span>
                               <span className="text-[10px] text-slate-500">
-                                {r.forma_mimo === "amazon" ? "📦 Amazon" : `💸 Pix (R$ ${r.preco_mimo_reserva.toFixed(2)})`}
+                                {r.forma_mimo === "amazon" ? "📦 Amazon" : r.forma_mimo === "local" ? "🛍️ Loja Física" : `💸 Pix (R$ ${r.preco_mimo_reserva.toFixed(2)})`}
                               </span>
                             </td>
 

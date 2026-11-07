@@ -16,6 +16,9 @@ def test_four_acquisition_combinations_and_pix_totals(client, db_session):
         ("amazon", "pix"),
         ("pix", "amazon"),
         ("pix", "pix"),
+        ("local", "local"),
+        ("local", "pix"),
+        ("amazon", "local"),
     ]
 
     for idx, (f_pres, f_mimo) in enumerate(combinations, start=1):

@@ -117,11 +117,11 @@ class Reserva(Base):
             name="ck_reserva_status"
         ),
         CheckConstraint(
-            "forma_presente IN ('amazon','pix')",
+            "forma_presente IN ('amazon','pix','local')",
             name="ck_reserva_forma_presente"
         ),
         CheckConstraint(
-            "forma_mimo IN ('amazon','pix')",
+            "forma_mimo IN ('amazon','pix','local')",
             name="ck_reserva_forma_mimo"
         ),
         CheckConstraint("valor_pix_total >= 0", name="ck_reserva_pix_total"),
@@ -181,7 +181,7 @@ class Comprovante(Base):
             name="ck_comprovante_tipo"
         ),
         CheckConstraint(
-            "forma_aquisicao IN ('amazon','pix')",
+            "forma_aquisicao IN ('amazon','pix','local')",
             name="ck_comprovante_forma"
         ),
         CheckConstraint(

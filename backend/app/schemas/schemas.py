@@ -72,8 +72,8 @@ class ReservaCreateRequest(BaseModel):
     nome_convidado: str = Field(..., min_length=2, max_length=150)
     whatsapp: str = Field(..., min_length=10, max_length=30)
     autoriza_nome_publico: bool = False
-    forma_presente: str  # 'amazon' ou 'pix'
-    forma_mimo: str  # 'amazon' ou 'pix'
+    forma_presente: str  # 'amazon', 'pix' ou 'local'
+    forma_mimo: str  # 'amazon', 'pix' ou 'local'
     consentimento_lgpd: bool
 
     @field_validator("whatsapp")
@@ -89,8 +89,8 @@ class ReservaCreateRequest(BaseModel):
     @classmethod
     def validate_forma(cls, v: str) -> str:
         v_clean = v.lower().strip()
-        if v_clean not in ["amazon", "pix"]:
-            raise ValueError("A forma de aquisição deve ser 'amazon' ou 'pix'")
+        if v_clean not in ["amazon", "pix", "local"]:
+            raise ValueError("A forma de aquisição deve ser 'amazon', 'pix' ou 'local'")
         return v_clean
 
     @field_validator("consentimento_lgpd")

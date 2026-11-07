@@ -71,9 +71,9 @@ function AcompanhamentoInner() {
 
         <dl className="text-sm space-y-2 bg-[#FFF8F0] rounded-2xl p-4 border border-[#A9B8A0]/40">
           <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Presente</dt><dd className="text-right font-medium">{reserva.presente_nome}</dd></div>
-          <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Forma do presente</dt><dd className="font-medium">{reserva.forma_presente === "pix" ? "Pix" : "Compra na Amazon"}</dd></div>
+          <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Forma do presente</dt><dd className="font-medium">{reserva.forma_presente === "pix" ? "Pix" : reserva.forma_presente === "local" ? "Compra em loja física" : "Compra na Amazon"}</dd></div>
           <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Mimo</dt><dd className="text-right font-medium">{reserva.mimo_nome}</dd></div>
-          <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Forma do mimo</dt><dd className="font-medium">{reserva.forma_mimo === "pix" ? "Pix" : "Compra na Amazon"}</dd></div>
+          <div className="flex justify-between gap-2"><dt className="text-[#29343A]/70">Forma do mimo</dt><dd className="font-medium">{reserva.forma_mimo === "pix" ? "Pix" : reserva.forma_mimo === "local" ? "Compra em loja física" : "Compra na Amazon"}</dd></div>
           {reserva.valor_pix_total > 0 && (
             <div className="flex justify-between gap-2 border-t border-[#A9B8A0]/40 pt-2">
               <dt className="font-bold">Total via Pix</dt>

@@ -37,9 +37,9 @@ export default function ReservationModal({
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Selections
-  const [formaPresente, setFormaPresente] = useState<"amazon" | "pix">("amazon");
+  const [formaPresente, setFormaPresente] = useState<"amazon" | "pix" | "local">("amazon");
   const [selectedMimoId, setSelectedMimoId] = useState<number | null>(null);
-  const [formaMimo, setFormaMimo] = useState<"amazon" | "pix">("amazon");
+  const [formaMimo, setFormaMimo] = useState<"amazon" | "pix" | "local">("amazon");
 
   // Identification & LGPD
   const [nome, setNome] = useState("");
@@ -134,11 +134,11 @@ export default function ReservationModal({
     }
     if (step === 2) {
       if (formaPresente === "pix" && !pixPresenteDisponivel) {
-        setErrorMessage("A fralda está sem preço definido. Escolha comprar na Amazon ou aguarde o casal atualizar o valor.");
+        setErrorMessage("A fralda está sem preço definido. Escolha comprar na Amazon, em loja física, ou aguarde o casal atualizar o valor.");
         return;
       }
       if (formaMimo === "pix" && !pixMimoDisponivel) {
-        setErrorMessage("Este mimo está sem preço definido. Escolha comprar na Amazon ou aguarde o casal atualizar o valor.");
+        setErrorMessage("Este mimo está sem preço definido. Escolha comprar na Amazon, em loja física, ou aguarde o casal atualizar o valor.");
         return;
       }
       if (!nome.trim() || nome.trim().length < 2) {
@@ -511,37 +511,57 @@ export default function ReservationModal({
                 <span className="text-xs font-bold text-[#42677D] block mb-2">
                   Fralda — como você prefere presentear?
                 </span>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setFormaPresente("amazon")}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                       formaPresente === "amazon"
                         ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
                         : "bg-white/60 border-slate-200 hover:bg-white"
                     }`}
                   >
-                    <span className="text-lg block mb-1">📦</span>
-                    <span className="text-xs font-bold text-[#42677D] block">Comprar na Amazon</span>
-                    <span className="text-[10px] text-slate-500">Você compra e entrega ou envia</span>
+                    <div>
+                      <span className="text-lg block mb-1">📦</span>
+                      <span className="text-xs font-bold text-[#42677D] block leading-tight">Comprar na Amazon</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">Você compra e entrega ou envia</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormaPresente("local")}
+                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      formaPresente === "local"
+                        ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
+                        : "bg-white/60 border-slate-200 hover:bg-white"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-lg block mb-1">🛍️</span>
+                      <span className="text-xs font-bold text-[#42677D] block leading-tight">Comprar localmente</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">Você compra em loja física e entrega</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => pixPresenteDisponivel && setFormaPresente("pix")}
                     disabled={!pixPresenteDisponivel}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
                       formaPresente === "pix" && pixPresenteDisponivel
                         ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
                         : "bg-white/60 border-slate-200 hover:bg-white"
                     } ${pixPresenteDisponivel ? "cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
                   >
-                    <span className="text-lg block mb-1">💸</span>
-                    <span className="text-xs font-bold text-[#42677D] block">Enviar via Pix</span>
-                    <span className="text-[10px] text-slate-500">
+                    <div>
+                      <span className="text-lg block mb-1">💸</span>
+                      <span className="text-xs font-bold text-[#42677D] block leading-tight">Enviar via Pix</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">
                       {pixPresenteDisponivel
                         ? `R$ ${precoPresente?.toFixed(2).replace(".", ",")}`
-                        : "Preço indisponível — compre na Amazon"}
+                        : "Preço indisponível"}
                     </span>
                   </button>
                 </div>
@@ -553,37 +573,57 @@ export default function ReservationModal({
                   <span className="text-xs font-bold text-[#42677D] block mb-2">
                     Mimo &ldquo;{selectedMimo.nome}&rdquo; — como você prefere presentear?
                   </span>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <button
                       type="button"
                       onClick={() => setFormaMimo("amazon")}
-                      className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
                         formaMimo === "amazon"
                           ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
                           : "bg-white/60 border-slate-200 hover:bg-white"
                       }`}
                     >
-                      <span className="text-lg block mb-1">📦</span>
-                      <span className="text-xs font-bold text-[#42677D] block">Comprar na Amazon</span>
-                      <span className="text-[10px] text-slate-500">Você adquire pelo link</span>
+                      <div>
+                        <span className="text-lg block mb-1">📦</span>
+                        <span className="text-xs font-bold text-[#42677D] block leading-tight">Comprar na Amazon</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">Você adquire pelo link</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormaMimo("local")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        formaMimo === "local"
+                          ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
+                          : "bg-white/60 border-slate-200 hover:bg-white"
+                      }`}
+                    >
+                      <div>
+                        <span className="text-lg block mb-1">🛍️</span>
+                        <span className="text-xs font-bold text-[#42677D] block leading-tight">Comprar localmente</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">Você compra em loja física e entrega</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => pixMimoDisponivel && setFormaMimo("pix")}
                       disabled={!pixMimoDisponivel}
-                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                      className={`p-3 rounded-xl border-2 text-left transition-all flex flex-col justify-between ${
                         formaMimo === "pix" && pixMimoDisponivel
                           ? "bg-white border-[#42677D] ring-2 ring-[#42677D]/20 shadow-xs"
                           : "bg-white/60 border-slate-200 hover:bg-white"
                       } ${pixMimoDisponivel ? "cursor-pointer" : "opacity-50 cursor-not-allowed"}`}
                     >
-                      <span className="text-lg block mb-1">💸</span>
-                      <span className="text-xs font-bold text-[#42677D] block">Enviar via Pix</span>
-                      <span className="text-[10px] text-slate-500">
+                      <div>
+                        <span className="text-lg block mb-1">💸</span>
+                        <span className="text-xs font-bold text-[#42677D] block leading-tight">Enviar via Pix</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1.5 leading-tight">
                         {pixMimoDisponivel
                           ? `R$ ${precoMimo?.toFixed(2).replace(".", ",")}`
-                          : "Preço indisponível — compre na Amazon"}
+                          : "Preço indisponível"}
                       </span>
                     </button>
                   </div>
@@ -596,7 +636,13 @@ export default function ReservationModal({
                   <span className="text-xs font-bold text-[#42677D] block">Total a transferir por Pix:</span>
                   <span className="text-[10px] text-slate-500">
                     {totalPix === 0
-                      ? "Nenhum valor em Pix (ambos na Amazon)"
+                      ? formaPresente === "amazon" && formaMimo === "amazon"
+                        ? "Nenhum valor em Pix (ambos na Amazon)"
+                        : formaPresente === "local" && formaMimo === "local"
+                        ? "Nenhum valor em Pix (ambos em loja física)"
+                        : formaPresente === "pix" || formaMimo === "pix"
+                        ? "Nenhum valor em Pix"
+                        : "Nenhum valor em Pix (compras presenciais / online)"
                       : formaPresente === "pix" && formaMimo === "pix"
                       ? "Fralda + Mimo"
                       : formaPresente === "pix"

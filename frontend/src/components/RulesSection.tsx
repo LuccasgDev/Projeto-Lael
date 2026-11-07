@@ -19,8 +19,8 @@ export default function RulesSection() {
     {
       num: "3",
       icon: "💳",
-      title: "Amazon ou Pix (Independente)",
-      desc: "Você decide separadamente: pode comprar pela Amazon ou transferir o valor por Pix para cada um dos dois produtos.",
+      title: "Amazon, Loja Física ou Pix",
+      desc: "Você decide separadamente: pode comprar pela Amazon, em loja física ou transferir o valor por Pix para cada um dos dois produtos.",
     },
     {
       num: "4",

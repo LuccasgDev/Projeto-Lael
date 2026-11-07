@@ -73,13 +73,15 @@ export interface Comprovante {
   rejeitado_em?: string;
 }
 
+export type FormaAquisicao = "amazon" | "pix" | "local";
+
 export interface ReservationResponse {
   id: number;
   numero: number;
   nome_convidado: string;
   whatsapp: string;
-  forma_presente: "amazon" | "pix";
-  forma_mimo: "amazon" | "pix";
+  forma_presente: FormaAquisicao;
+  forma_mimo: FormaAquisicao;
   presente_nome: string;
   presente_imagem?: string;
   presente_url?: string;
@@ -123,8 +125,8 @@ export interface ReservationAdminItem {
   nome_convidado: string;
   whatsapp: string;
   autoriza_nome_publico: boolean;
-  forma_presente: "amazon" | "pix";
-  forma_mimo: "amazon" | "pix";
+  forma_presente: FormaAquisicao;
+  forma_mimo: FormaAquisicao;
   preco_presente_reserva: number;
   preco_mimo_reserva: number;
   valor_pix_total: number;
@@ -169,8 +171,8 @@ export async function createReservationApi(data: {
   nome_convidado: string;
   whatsapp: string;
   autoriza_nome_publico: boolean;
-  forma_presente: "amazon" | "pix";
-  forma_mimo: "amazon" | "pix";
+  forma_presente: FormaAquisicao;
+  forma_mimo: FormaAquisicao;
   consentimento_lgpd: boolean;
 }): Promise<ReservationResponse> {
   const res = await fetch(`${API_BASE_URL}/public/reserve`, {

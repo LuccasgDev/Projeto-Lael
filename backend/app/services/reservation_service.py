@@ -43,8 +43,16 @@ def build_whatsapp_message(
     """
     Builds friendly WhatsApp message and click-to-chat URL.
     """
-    forma_pres_desc = "Comprar na Amazon" if reserva.forma_presente == "amazon" else f"Pix de R$ {reserva.preco_presente_reserva:.2f}"
-    forma_mimo_desc = "Comprar na Amazon" if reserva.forma_mimo == "amazon" else f"Pix de R$ {reserva.preco_mimo_reserva:.2f}"
+    def _format_forma(forma: str, preco: Decimal) -> str:
+        if forma == "amazon":
+            return "Comprar na Amazon"
+        elif forma == "local":
+            return "Comprar em loja física (localmente)"
+        else:
+            return f"Pix de R$ {preco:.2f}"
+
+    forma_pres_desc = _format_forma(reserva.forma_presente, reserva.preco_presente_reserva)
+    forma_mimo_desc = _format_forma(reserva.forma_mimo, reserva.preco_mimo_reserva)
 
     msg_lines = [
         "👶 *CHÁ DE RIFA DO LAEL*",
@@ -70,7 +78,7 @@ def build_whatsapp_message(
 
     msg_lines.extend([
         "",
-        "📎 Estou enviando por aqui os comprovantes (da compra na Amazon e/ou do Pix) para a confirmação da minha reserva!",
+        "📎 Estou enviando por aqui os comprovantes (da compra na Amazon, loja física e/ou do Pix) para a confirmação da minha reserva!",
         "Obrigado e parabéns pelo pequeno Lael! ✨",
     ])
 
