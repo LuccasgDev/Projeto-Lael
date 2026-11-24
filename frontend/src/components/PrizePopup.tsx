@@ -21,32 +21,49 @@ export default function PrizePopup({
   const cfg = popupConfig(site ?? null);
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const shownRef = useRef(false);
-
-  // Frequência: "uma_vez" usa localStorage, demais usam sessionStorage.
-  const storageKey = `lael_popup_${cfg.frequencia === "uma_vez" ? "ever" : "session"}`;
-  const storage = cfg.frequencia === "uma_vez" ? localStorage : sessionStorage;
 
   useEffect(() => {
-    if (shownRef.current) return;
-    shownRef.current = true;
-
     if (!cfg.enabled) return;
 
     // Respeita mostrar_desktop / mostrar_mobile
     const isMobile = window.matchMedia("(max-width: 640px)").matches;
     if ((isMobile && !cfg.mostrarMobile) || (!isMobile && !cfg.mostrarDesktop)) return;
 
-    // Frequência
+    // Frequência do popup: storage acessado somente no navegador.
+    // A marcação acontece dentro do setTimeout (na hora de abrir) —
+    // necessário porque o StrictMode executa o efeito setup→cleanup→setup
+    // em dev; marcar antes faria a 2ª execução sair cedo e o timer limpo
+    // nunca seria reagendado.
+    const storageKey = `lael_popup_${cfg.frequencia === "uma_vez" ? "ever" : "session"}`;
+
     try {
-      if (cfg.frequencia !== "sempre" && storage.getItem(storageKey)) return;
-      if (cfg.frequencia !== "sempre") storage.setItem(storageKey, "1");
-    } catch { /* storage indisponível → mostra uma vez */ }
+      if (cfg.frequencia !== "sempre") {
+        const storage = cfg.frequencia === "uma_vez"
+          ? window.localStorage
+          : window.sessionStorage;
+
+        if (storage.getItem(storageKey)) return;
+      }
+    } catch {
+      // Storage indisponível → mostra uma vez
+    }
 
     const delay = Math.max(0, cfg.atrasoSegundos) * 1000;
+
     const timer = setTimeout(() => {
+      // Marca como exibido somente agora (popup realmente abrindo)
+      try {
+        if (cfg.frequencia !== "sempre") {
+          const storage = cfg.frequencia === "uma_vez"
+            ? window.localStorage
+            : window.sessionStorage;
+          storage.setItem(storageKey, "1");
+        }
+      } catch { /* ignora */ }
+
       setOpen(true);
       window.scrollTo({ top: 0, behavior: "auto" });
+
       if (cfg.confetes) {
         try {
           confetti({
@@ -56,12 +73,22 @@ export default function PrizePopup({
             colors: CONFETTI_COLORS,
             disableForReducedMotion: true,
           });
-        } catch { /* confete é opcional */ }
+        } catch {
+          // Confete é opcional
+        }
       }
     }, delay);
+
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.enabled, cfg.frequencia, cfg.atrasoSegundos, cfg.confetes, cfg.mostrarDesktop, cfg.mostrarMobile]);
+  }, [
+    cfg.enabled,
+    cfg.frequencia,
+    cfg.atrasoSegundos,
+    cfg.confetes,
+    cfg.mostrarDesktop,
+    cfg.mostrarMobile,
+  ]);
 
   useEffect(() => {
     if (!open) return;

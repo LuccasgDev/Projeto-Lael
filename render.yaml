@@ -1,0 +1,67 @@
+# Render Blueprint — Projeto Lael (Chá Rifa do Lael)
+# Deploy: Render Dashboard → New → Blueprint → conectar este repositório.
+# Secrets ficam com `sync: false` — o Render pede o valor no deploy,
+# sem expor nada no Git.
+
+services:
+  # ---------------- BACKEND (FastAPI) ----------------
+  - type: web
+    name: lael-backend
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # postgresql+psycopg2://USER:SENHA@HOST:5432/DB
+      - key: SECRET_KEY
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: SEED_DEMO
+        value: "false"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://lael-frontend.onrender.com
+      - key: SCAVIO_ENABLED
+        value: "true"
+      - key: SCAVIO_API_KEY
+        sync: false
+      - key: SCAVIO_BASE_URL
+        value: https://api.scavio.dev
+      - key: SCAVIO_AMAZON_ENDPOINT
+        value: /api/v1/amazon/search
+      - key: SCAVIO_AMAZON_PRODUCT_ENDPOINT
+        value: /api/v1/amazon/product
+      - key: SCAVIO_TIMEOUT_SECONDS
+        value: "20"
+      - key: SCAVIO_CACHE_TTL_SECONDS
+        value: "300"
+      - key: AMAZON_ASSOCIATE_TAG
+        value: projetolael-20
+      - key: AMAZON_MARKETPLACE
+        value: BR
+      - key: DEFAULT_RESERVATION_HOURS
+        value: "72"
+      - key: TOTAL_NUMBERS
+        value: "100"
+      - key: EXPIRATION_WORKER_INTERVAL
+        value: "60"
+
+  # ---------------- FRONTEND (Next.js) ----------------
+  - type: web
+    name: lael-frontend
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./frontend/Dockerfile
+    plan: free
+    envVars:
+      # Browser fala same-origin; Next rewrites proxy /api → backend
+      - key: NEXT_PUBLIC_API_URL
+        value: /api
+      - key: BACKEND_INTERNAL_URL
+        value: https://lael-backend.onrender.com

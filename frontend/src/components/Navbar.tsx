@@ -15,7 +15,7 @@ export default function Navbar() {
             <span className="font-bold text-lg text-[#42677D] tracking-tight block leading-tight">
               Chá Rifa do Lael
             </span>
-            <span className="text-xs text-[#29343A]/70 flex items-center gap-1">
+            <span className="text-xs text-[#29343A]/70 hidden min-[400px]:flex items-center gap-1">
               <span>Fortaleza — CE</span>
               <span className="text-[#D99A7B]">•</span>
               <span>Março de 2027</span>

@@ -87,3 +87,44 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #42677D;
 }
+
+/* ================= MOBILE IMPROVEMENTS ================= */
+
+/* Evita zoom automático do iOS ao focar inputs (<16px dispara zoom) */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Remove delay de duplo-toque e highlight cinza em elementos clicáveis */
+a,
+button,
+[role="button"],
+input[type="checkbox"],
+input[type="radio"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Previne scroll horizontal causado por elementos decorativos */
+html,
+body {
+  overflow-x: clip;
+}
+
+/* Altura dinâmica real em mobile (address bar) para modais/seções full-height */
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+}
+
+/* Respeita área segura do iPhone (notch/home indicator) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  footer {
+    padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  }
+}

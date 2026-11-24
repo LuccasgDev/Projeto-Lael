@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className="min-h-full flex flex-col bg-[#FFF8F0] text-[#29343A] selection:bg-[#B9D8E8] selection:text-[#42677D]">
+      <body suppressHydrationWarning className="min-h-full flex flex-col bg-[#FFF8F0] text-[#29343A] selection:bg-[#B9D8E8] selection:text-[#42677D]">
         {children}
       </body>
     </html>

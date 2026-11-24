@@ -47,9 +47,9 @@ export default function Hero({
       <div className="max-w-4xl mx-auto text-center relative z-10">
         {/* Event Pill */}
         {exibirDadosEvento && (
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#B9D8E8]/40 border border-[#B9D8E8] text-[#42677D] text-xs sm:text-sm font-semibold mb-6 shadow-xs animate-float">
+          <div className="inline-flex flex-wrap items-center justify-center gap-x-2 px-4 py-1.5 rounded-full bg-[#B9D8E8]/40 border border-[#B9D8E8] text-[#42677D] text-xs sm:text-sm font-semibold mb-6 shadow-xs animate-float max-w-full">
             <span>👶</span>
-            <span>{pillText}</span>
+            <span className="text-center">{pillText}</span>
           </div>
         )}
 

@@ -271,7 +271,7 @@ export default function ReservationModal({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 max-h-[75vh] max-h-[85dvh] overflow-y-auto">
           {errorMessage && (
             <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
