@@ -8,6 +8,7 @@ Testes das regras da v2 do prompt:
 """
 import pytest
 from datetime import timedelta
+from conftest import mimo_para_numero
 
 from backend.app.models.models import Numero, Mimo, ProdutoPrincipal, Reserva, utcnow
 from backend.app.services.rate_limit import login_limiter, reserve_limiter
@@ -45,18 +46,21 @@ class TestFraldasRN01:
         assert "produto_id" in primeiro
 
     def test_fralda_sem_preco_aceita_amazon_mas_bloqueia_pix(self, client, db_session):
-        """RN-08 v2: preço nulo (fralda M 'Ver opções') — Amazon ok, Pix bloqueado."""
-        num = db_session.query(Numero).filter(Numero.numero == 5).first()
-        # Associa a uma fralda sem preço
-        fralda_m = ProdutoPrincipal(
-            asin="B07D3SVCTZ", nome="Pampers Confort Sec M, 44 un", tamanho="M",
-            ordem_exibicao=3, categoria="Fraldas", preco_atual=None,
-            quantidade_desejada=25, ativo=True,
+        """RN-08 v2: preço nulo — Amazon ok, Pix bloqueado. Usa faixa RN (regra fixa)."""
+        fralda_sem_preco = ProdutoPrincipal(
+            asin="B00TESTE01", nome="Fralda RN sem preço (teste)", tamanho="RN",
+            ordem_exibicao=99, categoria="Fraldas", preco_atual=None,
+            quantidade_desejada=5, ativo=True,
         )
-        db_session.add(fralda_m)
+        db_session.add(fralda_sem_preco)
         db_session.commit()
-        num.produto_principal_id = fralda_m.id
-        mimo = db_session.query(Mimo).first()
+        db_session.refresh(fralda_sem_preco)
+
+        num = db_session.query(Numero).filter(Numero.numero == 5).first()
+        num2 = db_session.query(Numero).filter(Numero.numero == 4).first()
+        num.produto_principal_id = fralda_sem_preco.id
+        num2.produto_principal_id = fralda_sem_preco.id
+        mimo = mimo_para_numero(db_session, num.numero)  # RN → mimo fixo
         db_session.commit()
 
         # Amazon OK
@@ -65,9 +69,6 @@ class TestFraldasRN01:
         assert r1.json()["preco_presente_reserva"] == 0
 
         # Outro número da mesma fralda, tentando Pix → 400
-        num2 = db_session.query(Numero).filter(Numero.numero == 6).first()
-        num2.produto_principal_id = fralda_m.id
-        db_session.commit()
         r2 = client.post("/api/public/reserve", json=_reserve_payload(num2.id, mimo.id, nome="G2", forma_pres="pix"))
         assert r2.status_code == 400
         assert "preço" in r2.json()["detail"].lower()
@@ -76,10 +77,10 @@ class TestFraldasRN01:
 class TestRegenerarFaixas:
     def test_regera_preservando_reservas_e_compra_externa(self, client, db_session, admin_headers):
         """RN-01: regerar faixas reatribui disponíveis e preserva reservado/confirmado/externo."""
-        fralda_rn = db_session.query(ProdutoPrincipal).filter(ProdutoPrincipal.tamanho == "RN").first()
+        fralda_rn = db_session.query(ProdutoPrincipal).filter(ProdutoPrincipal.tamanho == "RN", ProdutoPrincipal.ativo == True).first()
         num_res = db_session.query(Numero).filter(Numero.numero == 4).first()
         num_ext = db_session.query(Numero).filter(Numero.numero == 5).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num_res.numero)
 
         r = client.post("/api/public/reserve", json=_reserve_payload(num_res.id, mimo.id))
         assert r.status_code == 200
@@ -130,7 +131,7 @@ class TestCompraExternaRN10:
 
     def test_nao_marca_numero_com_reserva_ativa(self, client, db_session, admin_headers):
         num = db_session.query(Numero).filter(Numero.numero == 8).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         r = client.post("/api/public/reserve", json=_reserve_payload(num.id, mimo.id))
         assert r.status_code == 200
         r2 = client.post(f"/api/admin/numeros/{num.id}/compra-externa",
@@ -138,7 +139,7 @@ class TestCompraExternaRN10:
         assert r2.status_code == 400
 
     def test_ajuste_estoque_externo_mimo(self, client, db_session, admin_headers):
-        mimo = db_session.query(Mimo).first()
+        mimo = db_session.query(Mimo).filter(Mimo.categoria != "Mimo fixo do número").first()
         r = client.put(f"/api/admin/mimos/{mimo.id}/estoque-externo",
                        json={"quantidade_comprada_externa": 1}, headers=admin_headers)
         assert r.status_code == 200

@@ -1,4 +1,4 @@
-# Decisões e Premissas — Chá de Rifa do Lael
+# Decisões e Premissas — Chá Rifa do Lael
 
 Registro de decisões técnicas e de produto tomadas durante a implementação,
 com as premissas adotadas quando faltava informação do usuário.

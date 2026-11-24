@@ -1,8 +1,9 @@
 "use client";
 
 import { CheckCircle2, ShoppingBag, Send, Clock, Sparkles } from "lucide-react";
+import { SiteSettings, s as sStr } from "@/lib/siteSettings";
 
-export default function RulesSection() {
+export default function RulesSection({ site }: { site?: SiteSettings | null }) {
   const steps = [
     {
       num: "1",
@@ -13,20 +14,20 @@ export default function RulesSection() {
     {
       num: "2",
       icon: "🎁",
-      title: "Presente + Mimo",
-      desc: "Cada número traz um presente principal especial. Em seguida, escolha um mimo complementar da lista.",
+      title: "Fralda + Mimo do número",
+      desc: "Cada número corresponde a um tamanho de fralda (RN, P, M ou G) e já inclui um mimo especial correspondente. Nos números de tamanho M, você poderá escolher o mimo que desejar para complementar sua contribuição ao enxoval do Lael.",
     },
     {
       num: "3",
       icon: "💳",
       title: "Amazon, Loja Física ou Pix",
-      desc: "Você decide separadamente: pode comprar pela Amazon, em loja física ou transferir o valor por Pix para cada um dos dois produtos.",
+      desc: "Você pode escolher a forma que preferir para contribuir: comprar diretamente pela nossa lista do bebê na Amazon, adquirir os produtos em uma loja física e combinar a entrega conosco, ou enviar o valor correspondente por Pix para cada um dos dois produtos.",
     },
     {
       num: "4",
       icon: "📲",
       title: "Envio de Comprovantes",
-      desc: "Após reservar, você tem até 72 horas para mandar os 2 comprovantes pelo WhatsApp para confirmação pelo casal.",
+      desc: "Após reservar seu número, você terá até 72 horas para enviar os comprovantes pelo WhatsApp para que o casal possa confirmar sua participação.",
     },
   ];
 
@@ -38,10 +39,10 @@ export default function RulesSection() {
             Passo a Passo
           </span>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-[#42677D] mt-2 mb-2">
-            Como Funciona a Participação
+            {sStr(site?.textos?.como_funciona_titulo, "Como Funciona a Participação")}
           </h2>
           <p className="text-xs sm:text-sm text-[#29343A]/80">
-            É muito fácil e rápido garantir seu número e demonstrar seu carinho pelo Lael.
+            {sStr(site?.rifa?.mensagem_instrucoes, "É muito fácil e rápido garantir seu número e demonstrar seu carinho pelo Lael.")}
           </p>
         </div>
 

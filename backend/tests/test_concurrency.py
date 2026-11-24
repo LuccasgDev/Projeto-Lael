@@ -1,3 +1,4 @@
+from conftest import mimo_para_numero
 from backend.app.models.models import Numero, Mimo
 
 
@@ -7,7 +8,7 @@ def test_concurrent_reservation_same_number(client, db_session):
     cannot both succeed. One will reserve it and the other will receive 409 Conflict.
     """
     num = db_session.query(Numero).filter(Numero.numero == 8).first()
-    mimo = db_session.query(Mimo).first()
+    mimo = mimo_para_numero(db_session, num.numero)
 
     payload_guest1 = {
         "numero_id": num.id,

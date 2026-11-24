@@ -9,7 +9,7 @@ export default function Footer({ whatsapp }: { whatsapp?: string }) {
       <div className="max-w-4xl mx-auto space-y-5">
         <div className="inline-flex items-center justify-center gap-2 text-xl font-bold text-[#42677D]">
           <span>👶</span>
-          <span>Chá de Rifa do Lael</span>
+          <span>Chá Rifa do Lael</span>
           <span>✨</span>
         </div>
 
@@ -25,7 +25,7 @@ export default function Footer({ whatsapp }: { whatsapp?: string }) {
 
         <div className="flex flex-wrap items-center justify-center gap-4 text-xs pt-2">
           <a
-            href={`https://api.whatsapp.com/send?phone=55${cleanPhone}&text=Ol%C3%A1!%20Tenho%20uma%20d%C3%BAvida%20sobre%20o%20Ch%C3%A1%20de%20Rifa%20do%20Lael.`}
+            href={`https://api.whatsapp.com/send?phone=55${cleanPhone}&text=Ol%C3%A1!%20Tenho%20uma%20d%C3%BAvida%20sobre%20o%20Ch%C3%A1%20Rifa%20do%20Lael.`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-semibold"

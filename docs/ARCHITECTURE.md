@@ -1,8 +1,8 @@
-# Arquitetura do Sistema — Chá de Rifa do Lael
+# Arquitetura do Sistema — Chá Rifa do Lael
 
 ## 1. Visão Geral
 
-O sistema **Chá de Rifa do Lael** foi desenvolvido com uma arquitetura moderna, desacoplada e orientada a serviços para suportar com extrema confiabilidade o evento real de chá de bebê previsto para março de 2027 em Fortaleza — CE.
+O sistema **Chá Rifa do Lael** foi desenvolvido com uma arquitetura moderna, desacoplada e orientada a serviços para suportar com extrema confiabilidade o evento real de chá de bebê previsto para março de 2027 em Fortaleza — CE.
 
 A plataforma é dividida em três pilares principais:
 1. **Frontend**: Aplicação Next.js (App Router) + React 19 + TypeScript + Tailwind CSS, responsiva, mobile-first e rica em microinterações visuais acolhedoras.

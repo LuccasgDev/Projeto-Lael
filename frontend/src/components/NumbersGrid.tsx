@@ -10,11 +10,18 @@ interface NumbersGridProps {
   onSelectNumber: (num: number) => void;
 }
 
+/** Cores de identificação por tamanho de fralda (regra fixa RN/P/M/G) */
+const TAMANHO_STYLE: Record<string, { cor: string; bg: string; texto: string }> = {
+  RN: { cor: "border-sky-400", bg: "bg-sky-100/80", texto: "text-sky-800" },
+  P: { cor: "border-violet-400", bg: "bg-violet-100/80", texto: "text-violet-800" },
+  M: { cor: "border-rose-400", bg: "bg-rose-100/80", texto: "text-rose-800" },
+  G: { cor: "border-amber-500", bg: "bg-amber-100/80", texto: "text-amber-800" },
+};
+
 /**
- * §4 v2: grade SIMPLES e única de 01 a 100 — sem agrupamento por produto e
- * sem cabeçalhos de tamanho. Cada botão mostra só o número e o estado
- * (verde/amarelo/cinza + ícone/texto). A fralda do número só aparece
- * depois que o convidado clica (no popup de reserva).
+ * §4 v2: grade SIMPLES e única de 01 a 100 — cada número mostra o tamanho
+ * da fralda da sua faixa fixa (RN 01-05, P 06-35, M 36-65, G 66-100) com
+ * cor própria + legenda. O detalhe do produto e do mimo aparece ao clicar.
  */
 export default function NumbersGrid({ numbers, isLoading, onSelectNumber }: NumbersGridProps) {
   const [filter, setFilter] = useState<"todos" | "disponivel" | "reservado" | "confirmado">("todos");
@@ -51,9 +58,28 @@ export default function NumbersGrid({ numbers, isLoading, onSelectNumber }: Numb
           Escolha o seu número
         </h2>
         <p className="text-xs sm:text-sm text-[#29343A]/80">
-          Cada número equivale a uma fralda da lista da Talia — o tamanho aparece depois que você clica.
+          Cada número já vem com um tamanho de fralda (RN, P, M ou G) e um mimo correspondente.
           Toque em um número <span className="font-semibold text-emerald-700">verde (disponível)</span> para começar.
         </p>
+      </div>
+
+      {/* Legenda de tamanhos de fralda (regra fixa) */}
+      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-6">
+        {(["RN", "P", "M", "G"] as const).map((tam) => {
+          const estilo = TAMANHO_STYLE[tam];
+          const faixa =
+            tam === "RN" ? "01–05" : tam === "P" ? "06–35" : tam === "M" ? "36–65" : "66–100";
+          return (
+            <span
+              key={tam}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold border ${estilo.cor} ${estilo.bg} ${estilo.texto}`}
+              title={`Fralda ${tam} · números ${faixa}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-current opacity-70"></span>
+              Fralda {tam} · {faixa}
+            </span>
+          );
+        })}
       </div>
 
       {/* ALWAYS VISIBLE LEGEND & STATS (RN-03) */}
@@ -210,10 +236,10 @@ export default function NumbersGrid({ numbers, isLoading, onSelectNumber }: Numb
                   }
                 }}
                 disabled={!isDisponivel}
-                aria-label={`Número ${String(item.numero).padStart(2, "0")} — ${rotuloEstado}${
+                aria-label={`Número ${String(item.numero).padStart(2, "0")}${item.produto_tamanho ? ` — fralda ${item.produto_tamanho}` : ""} — ${rotuloEstado}${
                   isDisponivel ? ". Ative para escolher este número." : ""
                 }`}
-                title={`Número ${String(item.numero).padStart(2, "0")} — ${rotuloEstado}${
+                title={`Número ${String(item.numero).padStart(2, "0")}${item.produto_tamanho ? ` · Fralda ${item.produto_tamanho}` : ""}${item.mimo_nome ? ` + ${item.mimo_nome}` : ""} — ${rotuloEstado}${
                   isCompraExterna ? " (compra fora do site)" : ""
                 }`}
                 className={`relative aspect-square rounded-2xl flex flex-col items-center justify-center p-1.5 transition-all duration-200 select-none group ${
@@ -235,10 +261,19 @@ export default function NumbersGrid({ numbers, isLoading, onSelectNumber }: Numb
                   )}
                 </div>
 
-                {/* Number Display — §4 v2: só o número e o estado */}
+                {/* Number Display + tamanho da fralda (regra fixa) */}
                 <span className="text-base sm:text-xl font-extrabold tracking-tight block leading-none">
                   {String(item.numero).padStart(2, "0")}
                 </span>
+                {item.produto_tamanho && (
+                  <span
+                    className={`text-[8px] sm:text-[9px] font-black px-1 rounded-full leading-tight mt-0.5 ${
+                      TAMANHO_STYLE[item.produto_tamanho]?.texto ?? "text-slate-600"
+                    } bg-white/70`}
+                  >
+                    {item.produto_tamanho}
+                  </span>
+                )}
                 {(isReservado || isCompraExterna) && item.nome_publico && (
                   <span className="text-[9px] font-semibold truncate max-w-full px-0.5">{item.nome_publico}</span>
                 )}

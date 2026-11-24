@@ -5,7 +5,7 @@ from pydantic import field_validator
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Chá de Rifa do Lael"
+    PROJECT_NAME: str = "Chá Rifa do Lael"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api"
     
@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     # Business Rules
     DEFAULT_RESERVATION_HOURS: int = 72
     TOTAL_NUMBERS: int = 100
+
+    # Scavio Amazon API (painel admin — busca de produtos para o catálogo)
+    # A chave NUNCA vai para o frontend, banco ou logs. Sem chave → integração desativada.
+    SCAVIO_ENABLED: bool = False
+    SCAVIO_API_KEY: str = ""
+    SCAVIO_BASE_URL: str = "https://api.scavio.dev"
+    SCAVIO_AMAZON_ENDPOINT: str = "/api/v1/amazon/search"
+    SCAVIO_AMAZON_PRODUCT_ENDPOINT: str = "/api/v1/amazon/product"
+    SCAVIO_TIMEOUT_SECONDS: float = 20.0
+    SCAVIO_CACHE_TTL_SECONDS: int = 300  # cache em memória de pesquisas idênticas
+
+    # Amazon Associates — geração do link de afiliado
+    AMAZON_ASSOCIATE_TAG: str = "projetolael-20"
+    AMAZON_MARKETPLACE: str = "BR"
     
     # Expiration Worker Interval in Seconds
     EXPIRATION_WORKER_INTERVAL: int = 60

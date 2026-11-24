@@ -1,0 +1,13 @@
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/venv
+**/.venv
+**/node_modules
+frontend/.next
+.env
+*.log
+*.db
+backend/rifa_lael.db

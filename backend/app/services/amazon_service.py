@@ -9,7 +9,7 @@ from backend.app.models.models import ProdutoPrincipal, Mimo, HistoricoAdmin, Ad
 
 logger = logging.getLogger(__name__)
 
-TALIA_REGISTRY_URL = "https://www.amazon.com.br/baby-reg/taliavitria-nascimento-maro-2027-fortaleza/10NOCBS3PDNDW"
+TALIA_REGISTRY_URL = "https://www.amazon.com.br/baby-reg/taliavitria-nascimento-maro-2027-fortaleza/1R1H8YUPKKG2R"
 LUCAS_REGISTRY_URL = "https://www.amazon.com.br/baby-reg/lucas-gabriel-maro-2027-fortaleza/24ZYPSUDF4A94"
 
 

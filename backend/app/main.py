@@ -8,7 +8,8 @@ from backend.app.config import settings
 from backend.app.data.seed_data import init_database_seed
 from backend.app.services.expiration_worker import start_expiration_worker
 from backend.app.routers import (
-    public_router, auth_router, admin_router, sync_router
+    public_router, auth_router, admin_router, sync_router, scavio_router,
+    site_admin_router, site_public_router
 )
 
 logging.basicConfig(
@@ -27,7 +28,7 @@ if settings.SECRET_KEY == "lael-super-secret-security-key-2027-cha-de-bebe-forta
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize tables & seeds
-    logger.info("Iniciando Chá de Rifa do Lael API...")
+    logger.info("Iniciando Chá Rifa do Lael API...")
     try:
         init_database_seed()
     except Exception as e:
@@ -50,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API do sistema web do Chá de Rifa do Lael — Fortaleza/CE (Março 2027)",
+    description="API do sistema web do Chá Rifa do Lael — Fortaleza/CE (Março 2027)",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -70,6 +71,9 @@ app.include_router(public_router, prefix=settings.API_PREFIX)
 app.include_router(auth_router, prefix=settings.API_PREFIX)
 app.include_router(admin_router, prefix=settings.API_PREFIX)
 app.include_router(sync_router, prefix=settings.API_PREFIX)
+app.include_router(scavio_router, prefix=settings.API_PREFIX)
+app.include_router(site_admin_router, prefix=settings.API_PREFIX)
+app.include_router(site_public_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/")
@@ -77,7 +81,7 @@ def root():
     return {
         "projeto": settings.PROJECT_NAME,
         "versao": settings.VERSION,
-        "evento": "Chá de Rifa do Lael - Março de 2027 (Fortaleza - CE)",
+        "evento": "Chá Rifa do Lael - Março de 2027 (Fortaleza - CE)",
         "documentacao": "/docs",
         "status": "online"
     }

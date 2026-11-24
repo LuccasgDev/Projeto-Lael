@@ -1,4 +1,4 @@
-# Status do Projeto — Chá de Rifa do Lael
+# Status do Projeto — Chá Rifa do Lael
 
 Última atualização: 07/11/2026 (v2 — fraldas E mimos reais semeados, faixas regeráveis, edição no painel; testes executados)
 

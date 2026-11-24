@@ -49,8 +49,9 @@ class NumeroGridItem(BaseModel):
     nome_publico: Optional[str] = None
     produto_id: Optional[int] = None
     produto_nome: Optional[str] = None
-    produto_tamanho: Optional[str] = None
+    produto_tamanho: Optional[str] = None  # RN/P/M/G — regra fixa por número
     produto_imagem: Optional[str] = None
+    mimo_nome: Optional[str] = None  # mimo fixo do tamanho (None quando M = escolha livre)
 
     class Config:
         from_attributes = True
@@ -61,6 +62,9 @@ class NumeroDetailResponse(BaseModel):
     numero: int
     status: str
     produto_principal: Optional[ProdutoPrincipalPublic] = None
+    # Regra fixa número → fralda + mimo:
+    mimo_livre: bool = False          # True só na faixa M (36-65): participante escolhe o mimo
+    mimo_fixo: Optional[MimoPublic] = None  # mimo fixo resolvido (RN/P/G); None na faixa M
 
     class Config:
         from_attributes = True
@@ -286,6 +290,72 @@ class MimoCreateUpdate(BaseModel):
     quantidade_desejada: int = 1
     quantidade_comprada_externa: int = 0
     ativo: bool = True
+
+
+# ==================== SCAVIO AMAZON (painel admin) ====================
+
+class ScavioSearchRequest(BaseModel):
+    query: str  # nome do produto, palavra-chave, ASIN ou URL da Amazon
+
+
+class ScavioProductResult(BaseModel):
+    nome: Optional[str] = None
+    asin: Optional[str] = None
+    url: Optional[str] = None
+    link_afiliado: Optional[str] = None
+    imagem_url: Optional[str] = None
+    descricao: Optional[str] = None
+    preco: Optional[float] = None
+    preco_anterior: Optional[float] = None
+    moeda: Optional[str] = None
+    avaliacao: Optional[float] = None
+    total_avaliacoes: Optional[int] = None
+    marca: Optional[str] = None
+    disponivel: Optional[bool] = None
+    origem: str = "search"  # 'search' | 'product' (detalhe por ASIN/URL)
+
+
+class ScavioSearchResponse(BaseModel):
+    products: List[ScavioProductResult]
+    total: int
+    cached: bool = False
+    credits_remaining: Optional[int] = None
+
+
+class ScavioStatusResponse(BaseModel):
+    enabled: bool
+    configured: bool
+    status: str  # desativada | sem_api_key | configurada
+    marketplace: str
+    associate_tag: str
+
+
+# ==================== SINCRONIZAÇÃO DO CATÁLOGO (Scavio) ====================
+
+class ScavioSyncLoteRequest(BaseModel):
+    tipo: str = "todos"  # 'produtos' | 'mimos' | 'todos'
+    atualizar_nome: bool = False  # sobrescreve nome mesmo quando já preenchido
+
+
+class ScavioSyncItemResult(BaseModel):
+    id: int
+    tipo: Optional[str] = None
+    asin: Optional[str] = None
+    status: str  # sincronizado | sem_alteracoes | sem_asin | nao_encontrado | erro
+    alterados: List[str] = []
+    erro: Optional[str] = None
+    preco: Optional[float] = None
+    disponivel: Optional[bool] = None
+
+
+class ScavioSyncLoteResponse(BaseModel):
+    tipo: str
+    total: int
+    sincronizados: int
+    sem_alteracoes: int
+    sem_asin: int
+    erros: int
+    itens: List[ScavioSyncItemResult]
 
 
 class ConfiguracaoBulkUpdate(BaseModel):

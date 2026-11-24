@@ -1,6 +1,6 @@
 # Guia de Instalação e Execução Local
 
-Este guia detalha como executar a aplicação **Chá de Rifa do Lael** localmente na sua máquina sem necessidade obrigatória de Docker.
+Este guia detalha como executar a aplicação **Chá Rifa do Lael** localmente na sua máquina sem necessidade obrigatória de Docker.
 
 ---
 

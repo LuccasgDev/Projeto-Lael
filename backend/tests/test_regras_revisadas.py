@@ -11,6 +11,7 @@ from datetime import timedelta
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+from conftest import mimo_para_numero
 from backend.app.models.models import Numero, Mimo, Reserva, utcnow
 from backend.app.services.rate_limit import login_limiter, reserve_limiter
 
@@ -41,7 +42,7 @@ class TestExpiracaoNaLeituraEReserva:
     def test_grid_expira_reserva_vencida(self, client, db_session):
         """RN-06: a leitura da grade expira reservas vencidas e devolve o número."""
         num = db_session.query(Numero).filter(Numero.numero == 5).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         num.status = "reservado"
         reserva = Reserva(
             numero_id=num.id, mimo_id=mimo.id, nome_convidado="Antiga",
@@ -66,7 +67,7 @@ class TestExpiracaoNaLeituraEReserva:
     def test_reserva_bloqueada_com_expiracao_pendente(self, client, db_session):
         """RN-06: reservar um número com reserva vencida NÃO herdada — a antiga expira e a nova entra."""
         num = db_session.query(Numero).filter(Numero.numero == 6).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         num.status = "reservado"
         db_session.add(Reserva(
             numero_id=num.id, mimo_id=mimo.id, nome_convidado="Vencida",
@@ -91,7 +92,7 @@ class TestIndiceUnicoParcial:
     def test_uma_unica_reserva_ativa_por_numero_no_banco(self, db_session):
         """Garantia no BANCO (não no backend): segunda reserva 'reservada' para o mesmo número falha."""
         num = db_session.query(Numero).filter(Numero.numero == 7).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         base = dict(
             numero_id=num.id, mimo_id=mimo.id, nome_convidado="A",
             whatsapp="85999990003", forma_presente="pix", forma_mimo="pix",
@@ -115,7 +116,7 @@ class TestIndiceUnicoParcial:
 class TestAcompanhamento:
     def test_link_secreto_funciona_e_token_nao_fica_salvo(self, client, db_session):
         num = db_session.query(Numero).filter(Numero.numero == 9).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         resp = client.post("/api/public/reserve", json=_reserve_payload(num.id, mimo.id))
         assert resp.status_code == 200
         token = resp.json()["token_acompanhamento"]
@@ -145,7 +146,7 @@ class TestRateLimiting:
 
     def test_reserva_limitada(self, client, db_session):
         num = db_session.query(Numero).filter(Numero.numero == 10).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         for _ in range(10):
             client.post(
                 "/api/public/reserve",
@@ -164,7 +165,7 @@ class TestRN01QuantidadeNumeros:
 
         # Reserva um número e depois reduz abaixo dele: reserva PRESERVADA
         num = db_session.query(Numero).filter(Numero.numero == 3).first()
-        mimo = db_session.query(Mimo).first()
+        mimo = mimo_para_numero(db_session, num.numero)
         r = client.post("/api/public/reserve", json=_reserve_payload(num.id, mimo.id))
         assert r.status_code == 200
 

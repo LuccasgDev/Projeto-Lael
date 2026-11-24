@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Chá de Rifa do Lael 👶✨ | Fortaleza - Março 2027",
-  description: "Participe do Chá de Rifa do pequeno Lael! Escolha seu número de 01 a 100, contribua com um presente ou mimo e comemore conosco este momento especial.",
+  title: "Chá Rifa do Lael 👶✨ | Fortaleza - Março 2027",
+  description: "Participe do Chá Rifa do pequeno Lael! Escolha seu número de 01 a 100, contribua com a fralda e o mimo do seu número e ajude a montar o enxoval do bebê.",
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👶</text></svg>",
   },

@@ -1,4 +1,4 @@
-# Proxy reverso do Chá de Rifa do Lael — HTTPS automático via Caddy.
+# Proxy reverso do Chá Rifa do Lael — HTTPS automático via Caddy.
 # Substitua CHADERIFA.LOCAL pelo domínio real na publicação (ex.: chaderifalael.com.br).
 # Para testes locais sem domínio, use :80 ou um domínio *.localhost.
 

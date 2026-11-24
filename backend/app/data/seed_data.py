@@ -8,14 +8,21 @@ from backend.app.models.models import (
 from backend.app.services.auth_service import get_password_hash
 from backend.app.models.models import utcnow
 from backend.app.data.mimos_reais import SEED_MIMOS_REAIS
+from backend.app.services.numero_regra import (
+    FAIXAS_NUMEROS, MIMO_FIXO_PADRAO, fralda_para_tamanho, resolver_mimo_fixo,
+)
 from decimal import Decimal
 
 
 # ============================================================
 # FRALDAS DA TALIA — DADOS REAIS da lista copiada pelo casal em
-# 06/11/2026 (tabela do briefing v2). Os 5 itens somam exatamente
-# 100 unidades, uma por número, em faixas contínuas:
-#   RN  01-10 · RN+ 11-20 · P 21-50 · M 51-75 · G 76-100
+# 06/11/2026 (tabela do briefing v2).
+#
+# NOVA REGRA FIXA (Chá Rifa do Lael): cada número representa um tamanho
+# de fralda em faixas fixas — RN 01-05 · P 06-35 · M 36-65 · G 66-100.
+# As quantidades abaixo refletem exatamente o tamanho de cada faixa.
+# A fralda RN+ não possui faixa na nova distribuição e fica INATIVA
+# (registro preservado; o painel permite reativar/editar se necessário).
 # Preços mudam (ofertas/Black Friday); o painel é a fonte para
 # atualizar preço e data. Preço ausente fica NULO (o casal informa
 # manualmente — RN-08 v2): hoje só a fralda M ("Ver opções").
@@ -31,7 +38,7 @@ SEED_FRALDAS_REAIS = [
         "preco_atual": 39.98,
         "preco_anterior": 52.83,
         "produto_url": "https://www.amazon.com.br/dp/B07GQB93FT",
-        "quantidade_desejada": 10,
+        "quantidade_desejada": 5,
         "ativo": True,
     },
     {
@@ -40,12 +47,12 @@ SEED_FRALDAS_REAIS = [
         "tamanho": "RN+",
         "ordem_exibicao": 2,
         "categoria": "Fraldas",
-        "descricao": "Fralda Pampers Recém Nascido tamanho RN+ (até 5 kg), pacote com 36 unidades. Oferta em 06/11/2026: R$ 45,13 (antes R$ 52,83).",
+        "descricao": "Fralda Pampers Recém Nascido tamanho RN+ (até 5 kg), pacote com 36 unidades. Sem faixa na nova distribuição fixa de números (RN 01-05, P 06-35, M 36-65, G 66-100); mantida inativa no catálogo.",
         "preco_atual": 45.13,
         "preco_anterior": 52.83,
         "produto_url": "https://www.amazon.com.br/dp/B0GY6GG8R7",
-        "quantidade_desejada": 10,
-        "ativo": True,
+        "quantidade_desejada": 0,
+        "ativo": False,
     },
     {
         "asin": "B07GQ136TS",
@@ -70,7 +77,7 @@ SEED_FRALDAS_REAIS = [
         "preco_atual": None,
         "preco_anterior": None,
         "produto_url": "https://www.amazon.com.br/dp/B07D3SVCTZ",
-        "quantidade_desejada": 25,
+        "quantidade_desejada": 30,
         "ativo": True,
     },
     {
@@ -83,7 +90,7 @@ SEED_FRALDAS_REAIS = [
         "preco_atual": 93.90,
         "preco_anterior": 151.59,
         "produto_url": "https://www.amazon.com.br/dp/B07X83MH7M",
-        "quantidade_desejada": 25,
+        "quantidade_desejada": 35,
         "ativo": True,
     },
 ]
@@ -199,7 +206,7 @@ SEED_MIMOS_DEMO = [
 ]
 
 DEFAULT_CONFIGS = {
-    "nome_evento": "Chá de Rifa do Lael",
+    "nome_evento": "Chá Rifa do Lael",
     "data_evento": "Março de 2027",
     "whatsapp_casal": "85999998888",
     "chave_pix": "lael2027@chaderifa.com.br",
@@ -208,11 +215,21 @@ DEFAULT_CONFIGS = {
     "banco_pix": "Nubank",
     "prazo_padrao_horas": "72",
     "total_numeros": "100",
-    "mensagem_inicial": "Sejam muito bem-vindos ao Chá de Rifa do Lael! Cada número representa uma fralda da lista da nossa família e amigos para a chegada do nosso menino em março de 2027, em Fortaleza — CE.",
-    "mensagem_confirmacao": "Recebemos sua reserva com muito carinho! Para confirmar seu número, por favor nos envie os comprovantes da compra na Amazon e/ou do Pix pelo WhatsApp.",
+    "mensagem_inicial": "Sejam muito bem-vindos ao Chá Rifa do Lael! Cada número corresponde a um tamanho de fralda (RN, P, M ou G) e já inclui um mimo especial. Nos números de tamanho M, você poderá escolher o mimo que desejar. Sua contribuição ajuda na montagem do enxoval do Lael, em março de 2027, em Fortaleza — CE.",
+    "mensagem_confirmacao": "Recebemos sua reserva com muito carinho! Para confirmar seu número, por favor nos envie os comprovantes da compra na Amazon, loja física e/ou do Pix pelo WhatsApp.",
     "mensagem_expiracao": "O prazo da sua reserva expirou e o número voltou a ficar disponível. Caso deseje contribuir, sinta-se à vontade para escolher um novo número!",
+    # Mimos fixos por tamanho de fralda (regra fixa do evento — nomes dos mimos cadastrados)
+    "mimo_fixo_rn": MIMO_FIXO_PADRAO["RN"],
+    "mimo_fixo_p": MIMO_FIXO_PADRAO["P"],
+    "mimo_fixo_g": MIMO_FIXO_PADRAO["G"],
     # LGPD: retenção de dados pessoais (dias) após a criação da reserva
     "retencao_dias_preservacao": "180",
+}
+
+# Valores antigos que devem ser migrados para os novos textos (rename do evento)
+_CONFIGS_LEGADO = {
+    "nome_evento": "Chá de Rifa do Lael",
+    "mensagem_inicial": "Sejam muito bem-vindos ao Chá de Rifa do Lael! Cada número representa uma fralda da lista da nossa família e amigos para a chegada do nosso menino em março de 2027, em Fortaleza — CE.",
 }
 
 
@@ -288,6 +305,10 @@ def init_database_seed():
             cfg = db.query(Configuracao).filter(Configuracao.chave == k).first()
             if not cfg:
                 db.add(Configuracao(chave=k, valor=v, atualizado_em=utcnow()))
+            elif k in _CONFIGS_LEGADO and cfg.valor == _CONFIGS_LEGADO[k]:
+                # Migra textos padrão antigos (rename do evento / nova dinâmica)
+                cfg.valor = v
+                cfg.atualizado_em = utcnow()
 
         # 3. FRALDAS REAIS (RN-01 v2) — casa pelo TAMANHO do grupo;
         #    atualiza apenas campos vazios (NUNCA sobrescreve preço ou link
@@ -402,27 +423,57 @@ def init_database_seed():
             {Mimo.ativo: False}, synchronize_session=False
         )
 
-        # 5. Números gerados a partir das fraldas, em FAIXAS CONTÍNUAS por tamanho (RN-01 v2)
-        #    10 RN + 10 RN+ + 30 P + 25 M + 25 G = 100 — nunca intercalados
-        #    Faixas: RN 01-10 · RN+ 11-20 · P 21-50 · M 51-75 · G 76-100
-        fraldas_ordenadas = sorted(fraldas_map, key=lambda f: f.ordem_exibicao)
+        # 5. Números — distribuição FIXA por tamanho de fralda (regra central
+        #    numero_regra.FAIXAS_NUMEROS): RN 01-05 · P 06-35 · M 36-65 · G 66-100.
+        #    Cada número é (re)apontado para a fralda ativa do tamanho da sua
+        #    faixa — a associação nunca depende de quantidade digitada.
+        faixas_por_tamanho = {f["tamanho"]: f for f in FAIXAS_NUMEROS}
         criados = 0
-        for faixa in gerar_faixas_fraldas(fraldas_ordenadas):
-            fralda = faixa["fralda"]
+        for faixa in FAIXAS_NUMEROS:
+            fralda = fralda_para_tamanho(db, faixa["tamanho"])
             for num in range(faixa["inicio"], faixa["fim"] + 1):
                 existing_num = db.query(Numero).filter(Numero.numero == num).first()
+                produto_id = fralda.id if fralda else None
                 if not existing_num:
                     db.add(Numero(
                         numero=num,
-                        produto_principal_id=fralda.id,
+                        produto_principal_id=produto_id,
                         status="disponivel",
                         criado_em=utcnow(),
                     ))
                     criados += 1
-                elif existing_num.produto_principal_id is None:
-                    existing_num.produto_principal_id = fralda.id
+                else:
+                    # Regra fixa: o produto do número segue SEMPRE a faixa do tamanho
+                    if existing_num.produto_principal_id != produto_id:
+                        existing_num.produto_principal_id = produto_id
 
-        total_fraldas = sum(f.quantidade_desejada for f in fraldas_ordenadas)
+        # 5b. Fraldas: quantidade desejada = tamanho da faixa fixa (cada número
+        #     é uma unidade da fralda). Nunca reduz valor maior informado à mão.
+        #     Fraldas fora das faixas fixas (ex.: RN+) ficam inativas.
+        for faixa in FAIXAS_NUMEROS:
+            fralda = fralda_para_tamanho(db, faixa["tamanho"])
+            if fralda:
+                qtd_faixa = faixa["fim"] - faixa["inicio"] + 1
+                if fralda.quantidade_desejada < qtd_faixa:
+                    fralda.quantidade_desejada = qtd_faixa
+        for f in fraldas_map:
+            if f.tamanho not in faixas_por_tamanho and f.ativo:
+                f.ativo = False
+
+        # 5c. Mimos fixos (RN/P/G): cada número da faixa já inclui o mimo, então
+        #     a quantidade desejada precisa cobrir a faixa inteira. Nunca reduz
+        #     um valor maior informado manualmente.
+        for faixa in FAIXAS_NUMEROS:
+            if faixa["tamanho"] == "M":
+                continue  # M: mimo à escolha do participante
+            mimo_fixo = resolver_mimo_fixo(db, faixa["tamanho"])
+            if mimo_fixo and mimo_fixo.quantidade_desejada < (faixa["fim"] - faixa["inicio"] + 1):
+                mimo_fixo.quantidade_desejada = faixa["fim"] - faixa["inicio"] + 1
+            elif not mimo_fixo:
+                print(f"[SEED] AVISO: mimo fixo do tamanho {faixa['tamanho']} não encontrado "
+                      f"(configure '{faixa['tamanho']}' em mimo_fixo_* ou cadastre o produto).")
+
+        total_fraldas = sum(f["fim"] - f["inicio"] + 1 for f in FAIXAS_NUMEROS)
         cfg_total = db.query(Configuracao).filter(Configuracao.chave == "total_numeros").first()
         if cfg_total and cfg_total.valor != str(total_fraldas):
             cfg_total.valor = str(total_fraldas)

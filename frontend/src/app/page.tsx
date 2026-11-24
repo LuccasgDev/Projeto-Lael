@@ -7,6 +7,8 @@ import RulesSection from "@/components/RulesSection";
 import NumbersGrid from "@/components/NumbersGrid";
 import ReservationModal from "@/components/ReservationModal";
 import Footer from "@/components/Footer";
+import PrizePopup from "@/components/PrizePopup";
+import { fetchSiteSettings, SiteSettings, s as sStr } from "@/lib/siteSettings";
 import {
   fetchPublicConfig, fetchNumbersGrid, fetchNumberDetail,
   fetchAvailableMimos, PublicConfig, GridItem, NumeroDetail, Mimo
@@ -14,6 +16,7 @@ import {
 
 export default function Home() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
+  const [site, setSite] = useState<SiteSettings | null>(null);
   const [numbers, setNumbers] = useState<GridItem[]>([]);
   const [mimos, setMimos] = useState<Mimo[]>([]);
   const [isLoadingGrid, setIsLoadingGrid] = useState(true);
@@ -25,12 +28,14 @@ export default function Home() {
   const loadData = useCallback(async () => {
     try {
       setIsLoadingGrid(true);
-      const [cfg, grid, mimoList] = await Promise.all([
+      const [cfg, grid, mimoList, siteCfg] = await Promise.all([
         fetchPublicConfig().catch(() => null),
         fetchNumbersGrid().catch(() => []),
         fetchAvailableMimos().catch(() => []),
+        fetchSiteSettings().catch(() => null),
       ]);
       if (cfg) setConfig(cfg);
+      setSite(siteCfg);
       setNumbers(grid);
       setMimos(mimoList);
     } finally {
@@ -73,13 +78,33 @@ export default function Home() {
     }
   };
 
+  const handlePopupNavigate = (target: string) => {
+    const el = document.getElementById(target.replace("#", ""));
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  // Modo de manutenção: visitantes veem aviso; reservas/admin seguem via /admin
+  if (site?.sistema?.modo_manutencao) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FFF8F0] px-6 text-center">
+        <span className="text-6xl mb-4">🔧</span>
+        <h1 className="text-2xl font-extrabold text-[#42677D] mb-2">Em manutenção</h1>
+        <p className="text-[#29343A]/80 max-w-md">
+          {sStr(site.sistema.mensagem_manutencao, "Estamos em manutenção. Voltamos em breve!")}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#FFF8F0]">
       <Navbar />
 
       <main className="flex-1">
-        <Hero onChooseNumber={handleScrollToNumbers} />
-        <RulesSection />
+        <Hero onChooseNumber={handleScrollToNumbers} site={site} prazoHoras={config?.prazo_padrao_horas} />
+        <RulesSection site={site} />
         <NumbersGrid
           numbers={numbers}
           isLoading={isLoadingGrid}
@@ -88,6 +113,8 @@ export default function Home() {
       </main>
 
       <Footer whatsapp={config?.whatsapp_casal} />
+
+      <PrizePopup site={site} onNavigate={handlePopupNavigate} />
 
       <ReservationModal
         numberDetail={selectedNumberDetail}

@@ -1,44 +1,43 @@
 """
-Testes da correção do fluxo (CORREÇÃO OBRIGATÓRIA v2):
+Testes do fluxo corrigido (REGRA FIXA do Chá Rifa do Lael):
 
-REGRA INEGOCIÁVEL: o número define a fralda; o convidado escolhe o mimo separadamente;
-o catálogo de mimos é retornado COMPLETO (sem limite/paginação que esconda itens).
+REGRA INEGOCIÁVEL: o número define a fralda (faixa fixa) e, fora da faixa M,
+também define o mimo; na faixa M o convidado escolhe o mimo separadamente.
+O catálogo de mimos é retornado COMPLETO (sem limite/paginação que esconda itens).
 
-- Número 01 → fralda RN; 11 → RN+; 21 → P; 51 → M; 76 → G.
+- 01–05 → RN · 06–35 → P · 36–65 → M · 66–100 → G.
 - Nenhum número tem um mimo como fralda.
 - Importação por texto cria TODOS os itens; a API não corta o catálogo.
 """
 import pytest
 
-from backend.app.data.seed_data import SEED_FRALDAS_REAIS, gerar_faixas_fraldas
+from backend.app.data.seed_data import SEED_FRALDAS_REAIS
 from backend.app.models.models import Numero, Mimo, ProdutoPrincipal
+from backend.app.services.numero_regra import FAIXAS_NUMEROS, classificar_numero
 
 
 class TestFaixasDeNumeros:
-    def test_faixas_continuas_da_lista_real(self):
-        """01–10 RN · 11–20 RN+ · 21–50 P · 51–75 M · 76–100 G — nunca intercalados."""
-        class F:
-            def __init__(self, tamanho, qtd):
-                self.tamanho, self.quantidade_desejada = tamanho, qtd
-
-        fraldas = [F("RN", 10), F("RN+", 10), F("P", 30), F("M", 25), F("G", 25)]
-        faixas = gerar_faixas_fraldas(fraldas)
-        esperado = [("RN", 1, 10), ("RN+", 11, 20), ("P", 21, 50), ("M", 51, 75), ("G", 76, 100)]
-        for faixa, (tam, ini, fim) in zip(faixas, esperado):
-            assert faixa["fralda"].tamanho == tam
-            assert faixa["inicio"] == ini
-            assert faixa["fim"] == fim
-        # faixas contíguas e total = 100
-        assert faixas[0]["inicio"] == 1
-        for a, b in zip(faixas, faixas[1:]):
+    def test_faixas_fixas_fixas(self):
+        """RN 01-05 · P 06-35 · M 36-65 · G 66-100 — fixas e contíguas."""
+        esperado = [("RN", 1, 5), ("P", 6, 35), ("M", 36, 65), ("G", 66, 100)]
+        assert [(f["tamanho"], f["inicio"], f["fim"]) for f in FAIXAS_NUMEROS] == esperado
+        assert FAIXAS_NUMEROS[0]["inicio"] == 1
+        for a, b in zip(FAIXAS_NUMEROS, FAIXAS_NUMEROS[1:]):
             assert b["inicio"] == a["fim"] + 1
-        assert faixas[-1]["fim"] == 100
+        assert FAIXAS_NUMEROS[-1]["fim"] == 100
+
+    @pytest.mark.parametrize("numero,tamanho", [
+        (1, "RN"), (5, "RN"), (6, "P"), (35, "P"),
+        (36, "M"), (65, "M"), (66, "G"), (100, "G"),
+    ])
+    def test_limites_das_faixas(self, numero, tamanho):
+        assert classificar_numero(numero)["tamanho"] == tamanho
 
 
 class TestMapeamentoNumeroFralda:
     @pytest.fixture()
     def grade_real(self, db_session):
-        """Monta a grade 01–100 com as fraldas reais do seed, via gerar_faixas_fraldas."""
+        """Monta a grade 01–100 com as fraldas reais do seed, via FAIXAS_NUMEROS."""
         fraldas_map = []
         for f in SEED_FRALDAS_REAIS:
             prod = ProdutoPrincipal(
@@ -50,14 +49,17 @@ class TestMapeamentoNumeroFralda:
             db_session.add(prod)
             db_session.flush()
             fraldas_map.append(prod)
+        db_session.commit()
 
-        for faixa in gerar_faixas_fraldas(sorted(fraldas_map, key=lambda x: x.ordem_exibicao)):
+        fralda_por_tamanho = {p.tamanho: p for p in fraldas_map if p.ativo}
+        for faixa in FAIXAS_NUMEROS:
+            fralda = fralda_por_tamanho[faixa["tamanho"]]
             for num in range(faixa["inicio"], faixa["fim"] + 1):
                 n = db_session.query(Numero).filter(Numero.numero == num).first()
                 if n:
-                    n.produto_principal_id = faixa["fralda"].id
+                    n.produto_principal_id = fralda.id
                 else:
-                    db_session.add(Numero(numero=num, produto_principal_id=faixa["fralda"].id, status="disponivel"))
+                    db_session.add(Numero(numero=num, produto_principal_id=fralda.id, status="disponivel"))
         db_session.commit()
         return fraldas_map
 
@@ -69,30 +71,24 @@ class TestMapeamentoNumeroFralda:
         assert p["tamanho"] == "RN"
         assert p["categoria"] == "Fraldas"
 
-    def test_numero_11_e_fralda_rn_mais(self, client, grade_real):
-        p = client.get("/api/public/numbers/11").json()["produto_principal"]
-        assert "RN+" in p["nome"]
-        assert p["tamanho"] == "RN+"
-
-    def test_numero_21_e_fralda_p(self, client, grade_real):
-        p = client.get("/api/public/numbers/21").json()["produto_principal"]
+    def test_numero_06_e_fralda_p(self, client, grade_real):
+        p = client.get("/api/public/numbers/6").json()["produto_principal"]
         assert "Premium Care P" in p["nome"]
         assert p["tamanho"] == "P"
 
-    def test_numero_51_e_fralda_m(self, client, grade_real):
-        p = client.get("/api/public/numbers/51").json()["produto_principal"]
+    def test_numero_36_e_fralda_m(self, client, grade_real):
+        p = client.get("/api/public/numbers/36").json()["produto_principal"]
         assert "Confort Sec M" in p["nome"]
         assert p["tamanho"] == "M"
         assert p["preco_atual"] is None  # sem preço na lista — admin informa manual
 
-    def test_numero_76_e_fralda_g(self, client, grade_real):
-        p = client.get("/api/public/numbers/76").json()["produto_principal"]
+    def test_numero_66_e_fralda_g(self, client, grade_real):
+        p = client.get("/api/public/numbers/66").json()["produto_principal"]
         assert "Pants G" in p["nome"]
         assert p["tamanho"] == "G"
 
-    def test_numero_91_tambem_e_fralda_g(self, client, grade_real):
-        """76–100 são todos G: o número 91 não tem produto próprio."""
-        p = client.get("/api/public/numbers/91").json()["produto_principal"]
+    def test_numero_100_tambem_e_fralda_g(self, client, grade_real):
+        p = client.get("/api/public/numbers/100").json()["produto_principal"]
         assert "Pants G" in p["nome"]
         assert p["tamanho"] == "G"
 

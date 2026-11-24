@@ -1,4 +1,4 @@
-# Chá de Rifa do Lael 👶✨
+# Chá Rifa do Lael 👶✨
 
 Plataforma web full-stack completa, responsiva e pronta para uso em produção, desenvolvida para gerenciar a escolha de presentes e a arrecadação do chá de bebê do **Lael**, previsto para março de 2027, em Fortaleza — CE.
 

@@ -8,6 +8,7 @@ import {
   ShieldCheck, AlertTriangle, Copy, CheckCheck,
   Clock, MessageCircle
 } from "lucide-react";
+import ProductImage from "@/components/ProductImage";
 import {
   NumeroDetail, Mimo, PublicConfig,
   createReservationApi, ReservationResponse
@@ -66,11 +67,18 @@ export default function ReservationModal({
       setErrorMessage("");
       setReservationResult(null);
       setSelectedMimoId(null);
+      // Mimo fixo (RN/P/G): já vem selecionado do backend — sem etapa de escolha
+      if (numberDetail?.mimo_livre === false && numberDetail?.mimo_fixo) {
+        setSelectedMimoId(numberDetail.mimo_fixo.id);
+      }
     }
   }, [isOpen]);
 
   const produtoPrincipal = numberDetail?.produto_principal;
-  const selectedMimo = mimos.find((m) => m.id === selectedMimoId);
+  const selectedMimo = mimos.find((m) => m.id === selectedMimoId) ?? numberDetail?.mimo_fixo ?? null;
+  // Regra fixa: só a faixa M (36–65) permite escolher o mimo; RN/P/G têm mimo fixo
+  const mimoLivre = numberDetail?.mimo_livre !== false;
+  const mimoFixo = numberDetail?.mimo_fixo ?? null;
 
   // Filtro de mimos por categoria e busca (§4 v2)
   const categoriasMimos = useMemo(
@@ -126,7 +134,9 @@ export default function ReservationModal({
     setErrorMessage("");
     if (step === 1) {
       if (!selectedMimoId) {
-        setErrorMessage("Por favor, escolha um mimo da lista do Lucas para continuar.");
+        setErrorMessage(mimoLivre
+          ? "Por favor, escolha um mimo da lista do Lucas para continuar."
+          : "O mimo deste número ainda não foi configurado. Avise o casal.");
         return;
       }
       setStep(2);
@@ -225,7 +235,7 @@ export default function ReservationModal({
 
   const tituloPopup =
     step === 1
-      ? "Escolha o mimo"
+      ? mimoLivre ? "Escolha o mimo" : "Fralda e mimo do seu número"
       : step === 2
       ? "Seus dados e pagamento"
       : "Reserva Realizada com Sucesso! 🎉";
@@ -275,13 +285,12 @@ export default function ReservationModal({
               {/* Fralda do número escolhido (identificação no topo, §4 v2) */}
               {produtoPrincipal && (
                 <div className="bg-white p-3 rounded-2xl border border-[#B9D8E8]/70 shadow-2xs flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-xl bg-slate-50 shrink-0 border border-slate-100 flex items-center justify-center overflow-hidden">
-                    {produtoPrincipal.imagem_url ? (
-                      <img src={produtoPrincipal.imagem_url} alt={produtoPrincipal.nome} className="object-contain w-full h-full p-1" />
-                    ) : (
-                      <span className="text-2xl">🎁</span>
-                    )}
-                  </div>
+                  <ProductImage
+                    src={produtoPrincipal.imagem_url}
+                    alt={produtoPrincipal.nome}
+                    fallback="🎁"
+                    className="w-14 h-14 rounded-xl shrink-0"
+                  />
                   <div className="flex-1 min-w-0">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-[#D99A7B] block">
                       Tamanho {produtoPrincipal.tamanho || "—"}
@@ -294,14 +303,43 @@ export default function ReservationModal({
 
               <div>
                 <h4 className="font-bold text-sm text-[#42677D] mb-1">
-                  Agora escolha um mimo da lista do Lucas
+                  {mimoLivre
+                    ? "Agora escolha um mimo da lista do Lucas"
+                    : "Mimo correspondente ao seu número"}
                 </h4>
                 <p className="text-xs text-slate-600 mb-3">
-                  O mimo não fica preso ao número: escolha o que mais quiser entre os disponíveis.
+                  {mimoLivre
+                    ? "O mimo não fica preso ao número: escolha o que mais quiser entre os disponíveis."
+                    : "Nos tamanhos RN, P e G, o mimo já vem definido pela faixa do número — ele ajuda a montar o enxoval do Lael."}
                 </p>
               </div>
 
-              {/* Filtro por categoria + busca (§4 v2) */}
+              {/* Mimo FIXO (RN/P/G): sem lista de escolha — mostra o mimo da regra */}
+              {!mimoLivre && mimoFixo && (
+                <div className="bg-white p-3 rounded-2xl border-2 border-[#42677D]/40 shadow-2xs flex items-center gap-3">
+                  <ProductImage
+                    src={mimoFixo.imagem_url}
+                    alt={mimoFixo.nome}
+                    fallback="🧸"
+                    className="w-14 h-14 rounded-xl shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-[#A9B8A0] block">
+                      Mimo incluído no número
+                    </span>
+                    <h4 className="font-bold text-xs text-[#29343A] line-clamp-1">{mimoFixo.nome}</h4>
+                    <span className="text-[11px] font-extrabold text-[#42677D]">
+                      {formatPreco(mimoFixo.preco_atual)}
+                    </span>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-[#42677D] text-white flex items-center justify-center shrink-0">
+                    <Check className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              )}
+
+              {/* Filtro por categoria + busca (§4 v2) — apenas quando o mimo é livre (faixa M) */}
+              {mimoLivre && (<>
               <div className="space-y-2">
                 <input
                   type="text"
@@ -380,13 +418,12 @@ export default function ReservationModal({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-slate-50 shrink-0 border border-slate-100 flex items-center justify-center overflow-hidden">
-                          {mimo.imagem_url ? (
-                            <img src={mimo.imagem_url} alt={mimo.nome} className="object-contain w-full h-full p-1" />
-                          ) : (
-                            <span className="text-xl">🧸</span>
-                          )}
-                        </div>
+                        <ProductImage
+                          src={mimo.imagem_url}
+                          alt={mimo.nome}
+                          fallback="🧸"
+                          className="w-12 h-12 rounded-xl shrink-0"
+                        />
 
                         <div>
                           <div className="flex items-center gap-1.5">
@@ -430,6 +467,7 @@ export default function ReservationModal({
                   Carregar mais ({mimosFiltrados.length - mimosVisiveis.length} restantes)
                 </button>
               )}
+              </>)}
             </div>
           )}
 
@@ -480,7 +518,7 @@ export default function ReservationModal({
                   </div>
                 )}
 
-                {/* Mimo escolhido + botão para voltar e trocar */}
+                {/* Mimo (fixo ou escolhido) + botão para trocar — só na faixa M */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-slate-50 shrink-0 border border-slate-100 flex items-center justify-center overflow-hidden">
@@ -491,18 +529,22 @@ export default function ReservationModal({
                       )}
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block">Mimo escolhido</span>
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                        {mimoLivre ? "Mimo escolhido" : "Mimo do número"}
+                      </span>
                       <span className="text-xs font-bold text-[#29343A] block line-clamp-1">{selectedMimo?.nome}</span>
                       <span className="text-[11px] font-extrabold text-[#42677D]">{formatPreco(precoMimo)}</span>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setErrorMessage(""); setStep(1); }}
-                    className="shrink-0 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 cursor-pointer"
-                  >
-                    Trocar mimo
-                  </button>
+                  {mimoLivre && (
+                    <button
+                      type="button"
+                      onClick={() => { setErrorMessage(""); setStep(1); }}
+                      className="shrink-0 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 cursor-pointer"
+                    >
+                      Trocar mimo
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -721,7 +763,7 @@ export default function ReservationModal({
                       className="w-4 h-4 mt-0.5 rounded-md border-slate-300 text-[#42677D] focus:ring-[#42677D] cursor-pointer"
                     />
                     <span className="text-[11px] text-slate-600 leading-snug">
-                      Autorizo o uso do meu nome e telefone <strong>exclusivamente</strong> para a organização e conferência do Chá de Rifa do Lael, em conformidade com a LGPD (texto v1, consentimento registrado com data). *
+                      Autorizo o uso do meu nome e telefone <strong>exclusivamente</strong> para a organização e conferência do Chá Rifa do Lael, em conformidade com a LGPD (texto v1, consentimento registrado com data). *
                     </span>
                   </label>
                 </div>
@@ -761,7 +803,7 @@ export default function ReservationModal({
               <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
                 <Clock className="w-4 h-4 shrink-0 text-amber-600" />
                 <span>
-                  Após reservar, você terá <strong>72 horas</strong> para enviar os comprovantes da fralda e do mimo.
+                  Após reservar seu número, você terá <strong>72 horas</strong> para enviar os comprovantes pelo WhatsApp — referentes à fralda e ao mimo — para que o casal possa confirmar sua participação.
                 </span>
               </div>
             </div>
@@ -818,7 +860,7 @@ export default function ReservationModal({
               <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200 text-xs text-emerald-950 text-left space-y-1 max-w-md mx-auto">
                 <strong>Próximo passo obrigatório:</strong>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
-                  Clique no botão abaixo para abrir a conversa no WhatsApp com Talia e Lucas. A mensagem já estará pronta com seu número, o tamanho da fralda e o mimo! Basta anexar os comprovantes.
+                  Clique no botão abaixo para abrir a conversa no WhatsApp com Talia e Lucas. A mensagem já estará pronta com seu número, o tamanho da fralda e o mimo! Basta anexar os comprovantes dos dois produtos.
                 </p>
               </div>
 

@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 export interface PublicConfig {
   nome_evento: string;
@@ -23,6 +23,7 @@ export interface GridItem {
   produto_nome?: string | null;
   produto_tamanho?: string | null;
   produto_imagem?: string | null;
+  mimo_nome?: string | null;
 }
 
 export interface ProdutoPrincipal {
@@ -46,6 +47,8 @@ export interface NumeroDetail {
   numero: number;
   status: "disponivel" | "reservado" | "confirmado";
   produto_principal?: ProdutoPrincipal;
+  mimo_livre?: boolean;
+  mimo_fixo?: Mimo | null;
 }
 
 export interface Mimo {
@@ -135,6 +138,7 @@ export interface ReservationAdminItem {
   expira_em: string;
   confirmada_em?: string;
   presente_nome: string;
+  presente_tamanho?: string | null;
   mimo_nome: string;
   comprovantes: Comprovante[];
   pode_confirmar: boolean;
@@ -467,5 +471,156 @@ export async function fetchAcompanhamento(token: string): Promise<ReservationRes
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || "Link de acompanhamento inválido.");
   }
+  return res.json();
+}
+
+// ==================== SCAVIO AMAZON (painel admin) ====================
+
+export interface ScavioProduct {
+  nome?: string | null;
+  asin?: string | null;
+  url?: string | null;
+  link_afiliado?: string | null;
+  imagem_url?: string | null;
+  descricao?: string | null;
+  preco?: number | null;
+  preco_anterior?: number | null;
+  moeda?: string | null;
+  avaliacao?: number | null;
+  total_avaliacoes?: number | null;
+  marca?: string | null;
+  disponivel?: boolean | null;
+  origem?: string;
+}
+
+export interface ScavioStatus {
+  enabled: boolean;
+  configured: boolean;
+  status: "desativada" | "sem_api_key" | "configurada" | string;
+  marketplace: string;
+  associate_tag: string;
+}
+
+export interface ScavioSearchResponse {
+  products: ScavioProduct[];
+  total: number;
+  cached: boolean;
+  credits_remaining?: number | null;
+}
+
+export async function fetchScavioStatusApi(token: string): Promise<ScavioStatus> {
+  const res = await fetch(`${API_BASE_URL}/admin/scavio/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Erro ao consultar status da Scavio");
+  return res.json();
+}
+
+export async function scavioSearchApi(token: string, query: string): Promise<ScavioSearchResponse> {
+  const res = await fetch(`${API_BASE_URL}/admin/scavio/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro na pesquisa Scavio");
+  }
+  return res.json();
+}
+
+// Criação de produto/mimo via catálogo existente (usado pela importação Scavio)
+export async function criarProdutoApi(token: string, data: {
+  asin?: string | null; nome: string; descricao?: string | null;
+  imagem_url?: string | null; produto_url?: string | null; categoria?: string | null;
+  tamanho?: string | null; ordem_exibicao?: number;
+  preco_atual?: number | null; preco_anterior?: number | null;
+  quantidade_desejada?: number; quantidade_comprada_externa?: number; ativo?: boolean;
+}) {
+  const res = await fetch(`${API_BASE_URL}/admin/produtos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao criar produto");
+  }
+  return res.json();
+}
+
+export async function criarMimoApi(token: string, data: {
+  asin?: string | null; nome: string; descricao?: string | null;
+  imagem_url?: string | null; produto_url?: string | null; categoria?: string | null;
+  preco_atual?: number | null; preco_anterior?: number | null;
+  quantidade_desejada?: number; quantidade_comprada_externa?: number; ativo?: boolean;
+}) {
+  const res = await fetch(`${API_BASE_URL}/admin/mimos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao criar mimo");
+  }
+  return res.json();
+}
+
+// ==================== SINCRONIZAÇÃO DO CATÁLOGO (Scavio) ====================
+
+export interface ScavioSyncItem {
+  id: number;
+  tipo?: string | null;
+  asin?: string | null;
+  status: "sincronizado" | "sem_alteracoes" | "sem_asin" | "nao_encontrado" | "erro" | string;
+  alterados?: string[];
+  erro?: string | null;
+  preco?: number | null;
+  disponivel?: boolean | null;
+}
+
+export interface ScavioSyncLoteResponse {
+  tipo: string;
+  total: number;
+  sincronizados: number;
+  sem_alteracoes: number;
+  sem_asin: number;
+  erros: number;
+  itens: ScavioSyncItem[];
+}
+
+export async function syncScavioLoteApi(token: string, tipo: "produtos" | "mimos" | "todos", atualizarNome = false): Promise<ScavioSyncLoteResponse> {
+  const res = await fetch(`${API_BASE_URL}/admin/scavio/sync/lote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ tipo, atualizar_nome: atualizarNome }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro na sincronização Scavio");
+  }
+  return res.json();
+}
+
+export async function syncScavioItemApi(token: string, tipo: "produto" | "mimo", id: number): Promise<ScavioSyncItem> {
+  const res = await fetch(`${API_BASE_URL}/admin/scavio/sync/${tipo}/${id}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Erro ao sincronizar item");
+  }
+  return res.json();
+}
+
+export async function fetchScavioSyncStatusApi(token: string) {
+  const res = await fetch(`${API_BASE_URL}/admin/scavio/sync/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Erro ao consultar status de sincronização");
   return res.json();
 }

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from backend.app.models.models import Numero, Mimo, Reserva, Comprovante, utcnow
+from conftest import mimo_para_numero
+from backend.app.models.models import Numero, Mimo, Reserva, Comprovante, ProdutoPrincipal, utcnow
 from backend.app.services.expiration_worker import check_and_expire_reservations
 
 
@@ -8,9 +9,6 @@ def test_four_acquisition_combinations_and_pix_totals(client, db_session):
     Tests the 4 distinct combinations of (Presente, Mimo) acquisition
     and verifies that valor_pix_total is calculated strictly from Pix choices.
     """
-    mimo = db_session.query(Mimo).first()
-    preco_mimo = mimo.preco_atual
-
     combinations = [
         ("amazon", "amazon"),
         ("amazon", "pix"),
@@ -23,6 +21,9 @@ def test_four_acquisition_combinations_and_pix_totals(client, db_session):
 
     for idx, (f_pres, f_mimo) in enumerate(combinations, start=1):
         num = db_session.query(Numero).filter(Numero.numero == idx).first()
+        # Regra fixa: o mimo correto depende da faixa do número (RN/P fixo, M livre)
+        mimo = mimo_para_numero(db_session, num.numero)
+        preco_mimo = mimo.preco_atual
         preco_pres = num.produto_principal.preco_atual
 
         payload = {
@@ -62,7 +63,7 @@ def test_confirmation_strictly_requires_both_vouchers(client, db_session, admin_
     Verifies that a reservation CANNOT be confirmed until BOTH vouchers are approved.
     """
     num = db_session.query(Numero).filter(Numero.numero == 1).first()
-    mimo = db_session.query(Mimo).first()
+    mimo = mimo_para_numero(db_session, num.numero)
 
     # Create reservation
     res_resp = client.post("/api/public/reserve", json={
@@ -123,7 +124,7 @@ def test_automatic_expiration_worker(client, db_session):
     and the number is restored to 'disponivel'.
     """
     num = db_session.query(Numero).filter(Numero.numero == 5).first()
-    mimo = db_session.query(Mimo).first()
+    mimo = mimo_para_numero(db_session, num.numero)
 
     res_resp = client.post("/api/public/reserve", json={
         "numero_id": num.id,
@@ -174,8 +175,24 @@ def test_stock_control_prevents_mimo_overbooking(client, db_session):
     db_session.commit()
     db_session.refresh(exclusive_mimo)
 
-    num1 = db_session.query(Numero).filter(Numero.numero == 1).first()
-    num2 = db_session.query(Numero).filter(Numero.numero == 2).first()
+    # Faixa M (36-65): mimo à escolha do participante — estoque limitado se aplica
+    fralda_m = db_session.query(ProdutoPrincipal).filter(ProdutoPrincipal.tamanho == "M", ProdutoPrincipal.ativo == True).first()
+    if fralda_m and fralda_m.preco_atual is None:
+        fralda_m.preco_atual = 50.0  # Pix exige preço conhecido (RN-08 v2)
+    if not fralda_m:
+        fralda_m = ProdutoPrincipal(
+            nome="Fralda M Teste", tamanho="M", categoria="Fraldas",
+            preco_atual=50.0, quantidade_desejada=30, ativo=True,
+        )
+        db_session.add(fralda_m)
+        db_session.commit()
+        db_session.refresh(fralda_m)
+    num1 = Numero(numero=40, produto_principal_id=fralda_m.id, status="disponivel")
+    num2 = Numero(numero=41, produto_principal_id=fralda_m.id, status="disponivel")
+    db_session.add_all([num1, num2])
+    db_session.commit()
+    db_session.refresh(num1)
+    db_session.refresh(num2)
 
     # 1. First guest reserves -> OK
     resp1 = client.post("/api/public/reserve", json={
@@ -210,7 +227,7 @@ def test_extend_and_release_reservation(client, db_session, admin_headers):
     Tests admin extension of deadline and manual release.
     """
     num = db_session.query(Numero).filter(Numero.numero == 7).first()
-    mimo = db_session.query(Mimo).first()
+    mimo = mimo_para_numero(db_session, num.numero)
 
     res_resp = client.post("/api/public/reserve", json={
         "numero_id": num.id,

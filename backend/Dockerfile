@@ -22,7 +22,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY backend /app/backend
 
-# Expose port
+# Non-root user (o app não escreve arquivos em produção — logs vão para stdout)
+RUN useradd --create-home --uid 1001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 # Health check

@@ -8,6 +8,9 @@ from backend.app.main import app
 from backend.app.models.models import Admin, Configuracao, ProdutoPrincipal, Mimo, Numero
 from backend.app.services.auth_service import get_password_hash, create_access_token
 from backend.app.data.seed_data import DEFAULT_CONFIGS, SEED_FRALDAS_REAIS, SEED_MIMOS_DEMO
+from backend.app.services.numero_regra import (
+    FAIXAS_NUMEROS, MIMO_FIXO_PADRAO, classificar_numero, resolver_mimo_fixo,
+)
 
 from sqlalchemy.pool import StaticPool
 
@@ -41,7 +44,7 @@ def db_session():
 
     # Seed Products (fraldas reais do seed — RN, RN+ e P, todas com preço)
     prods = []
-    for p in SEED_FRALDAS_REAIS[:3]:
+    for p in SEED_FRALDAS_REAIS:
         prod = ProdutoPrincipal(
             asin=p["asin"],
             nome=p["nome"],
@@ -53,7 +56,7 @@ def db_session():
             imagem_url=p.get("imagem_url"),
             produto_url=p["produto_url"],
             quantidade_desejada=p["quantidade_desejada"],
-            ativo=True,
+            ativo=p["ativo"],
         )
         session.add(prod)
         session.flush()
@@ -73,12 +76,29 @@ def db_session():
             ativo=True,
         )
         session.add(mimo)
-    # Seed 10 Numbers — faixa real RN (01–10) aponta para a fralda RN (prods[0]),
-    # que tem preço definido; testes que precisam de fralda sem preço a criam.
+
+    # Seed mimos FIXOS da regra (RN/P/G) — nomes canônicos das configurações
+    for faixa in FAIXAS_NUMEROS:
+        if faixa["tamanho"] == "M":
+            continue
+        tam = faixa["tamanho"]
+        session.add(Mimo(
+            nome=MIMO_FIXO_PADRAO[tam],
+            categoria="Mimo fixo do número",
+            descricao=f"Mimo fixo da faixa {tam} (regra do evento).",
+            preco_atual=20.0,
+            quantidade_desejada=faixa["fim"] - faixa["inicio"] + 1,
+            ativo=True,
+        ))
+    session.flush()
+
+    # Seed 10 Numbers — faixa fixa: 01–05 RN, 06–10 P
+    fraldas_por_tamanho = {p.tamanho: p for p in prods}
     for i in range(1, 11):
+        tam = classificar_numero(i)["tamanho"]
         num = Numero(
             numero=i,
-            produto_principal_id=prods[0].id,
+            produto_principal_id=fraldas_por_tamanho[tam].id,
             status="disponivel"
         )
         session.add(num)
@@ -108,6 +128,19 @@ def client(db_session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+def mimo_para_numero(db, numero: int):
+    """
+    Retorna o mimo correto para reservar um número, respeitando a regra fixa:
+    RN/P/G → mimo fixo da faixa; M → qualquer mimo ativo (escolha livre).
+    """
+    classif = classificar_numero(numero)
+    if classif["mimo_modo"] == "fixo":
+        mimo = resolver_mimo_fixo(db, classif["tamanho"])
+        assert mimo is not None, f"Mimo fixo {classif['tamanho']} não encontrado no seed de teste"
+        return mimo
+    return db.query(Mimo).first()
 
 
 @pytest.fixture(scope="function")

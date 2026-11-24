@@ -1,0 +1,41 @@
+# ============================================================
+# DESENVOLVIMENTO LOCAL — hot reload frontend + backend
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# ============================================================
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    volumes:
+      - ./backend:/app/backend
+      - ./rifa_lael.db:/app/rifa_lael.db
+    environment:
+      DATABASE_URL: sqlite:////app/rifa_lael.db
+      ENVIRONMENT: development
+      SEED_DEMO: "true"
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/backend
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      # Dev: browser chama o backend direto (hot reload independente)
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api
+      BACKEND_INTERNAL_URL: http://backend:8000
+    command: npm run dev
+    ports:
+      - "3000:3000"

@@ -14,8 +14,11 @@ import {
   fetchAdminMimos, updateAdminMimoPrice, updateAdminMimo, fetchAdminConfig,
   updateAdminConfig, fetchAuditLogs, getExportUrl,
   fetchAdminNumeros, marcarCompraExternaApi, importarMimosTextoApi, regenerarFaixasApi,
-  DashboardStats, ReservationAdminItem
+  fetchScavioStatusApi, scavioSearchApi, criarProdutoApi, criarMimoApi,
+  syncScavioLoteApi, syncScavioItemApi, fetchScavioSyncStatusApi,
+  DashboardStats, ReservationAdminItem, ScavioProduct, ScavioStatus, ScavioSyncLoteResponse
 } from "@/lib/api";
+import SiteSettingsPanel from "@/components/SiteSettingsPanel";
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -28,7 +31,7 @@ export default function AdminPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"dashboard" | "reservas" | "presentes" | "mimos" | "config" | "export" | "auditoria">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "reservas" | "presentes" | "mimos" | "amazon" | "personalizar" | "config" | "export" | "auditoria">("dashboard");
 
   // Dashboard Data
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -59,6 +62,22 @@ export default function AdminPage() {
 
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  // Scavio Amazon (busca de produtos para o catálogo)
+  const [scavioStatus, setScavioStatus] = useState<ScavioStatus | null>(null);
+  const [scavioQuery, setScavioQuery] = useState("");
+  const [scavioResults, setScavioResults] = useState<ScavioProduct[]>([]);
+  const [scavioSearched, setScavioSearched] = useState(false);
+  const [scavioCredits, setScavioCredits] = useState<number | null>(null);
+  const [scavioCached, setScavioCached] = useState(false);
+  // Formulário de importação (edição antes de salvar)
+  const [importForm, setImportForm] = useState<any>(null);
+  const [importTipo, setImportTipo] = useState<"produto" | "mimo">("produto");
+  const [importExistingId, setImportExistingId] = useState<number | null>(null);
+  const [importSaving, setImportSaving] = useState(false);
+  // Sincronização do catálogo via Scavio
+  const [syncLoading, setSyncLoading] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<ScavioSyncLoteResponse | null>(null);
 
   // General Loading & Feedback
   const [isLoading, setIsLoading] = useState(false);
@@ -98,6 +117,9 @@ export default function AdminPage() {
       } else if (activeTab === "mimos") {
         const data = await fetchAdminMimos(token);
         setMimos(data);
+      } else if (activeTab === "amazon") {
+        const st = await fetchScavioStatusApi(token);
+        setScavioStatus(st);
       } else if (activeTab === "config") {
         const data = await fetchAdminConfig(token);
         setConfigs(data);
@@ -340,6 +362,138 @@ export default function AdminPage() {
     }
   };
 
+  // ================= SCAVIO AMAZON =================
+  const handleScavioSearch = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!token || !scavioQuery.trim()) return;
+    setIsLoading(true);
+    setScavioSearched(false);
+    try {
+      const res = await scavioSearchApi(token, scavioQuery.trim());
+      setScavioResults(res.products);
+      setScavioCredits(res.credits_remaining ?? null);
+      setScavioCached(res.cached);
+      setScavioSearched(true);
+      if (res.products.length === 0) showToast("Nenhum produto encontrado para essa busca.");
+    } catch (err: any) {
+      showToast(err.message || "Erro na pesquisa Scavio");
+      setScavioResults([]);
+      setScavioSearched(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openImportForm = (p: ScavioProduct) => {
+    // Verifica se o ASIN já existe no catálogo para evitar duplicados
+    const asin = (p.asin || "").toUpperCase();
+    const all = [...produtos, ...mimos];
+    const existente = asin ? all.find((x: any) => (x.asin || "").toUpperCase() === asin) : null;
+    setImportExistingId(existente ? existente.id : null);
+    setImportTipo(existente ? (produtos.some((x: any) => x.id === existente.id) ? "produto" : "mimo") : "produto");
+    setImportForm({
+      nome: p.nome || "",
+      asin: p.asin || "",
+      imagem_url: p.imagem_url || "",
+      produto_url: p.link_afiliado || p.url || "",
+      link_afiliado: p.link_afiliado || "",
+      descricao: p.descricao || "",
+      preco_atual: p.preco ?? "",
+      preco_anterior: p.preco_anterior ?? "",
+      quantidade_desejada: 1,
+      ativo: true,
+      categoria: importTipo === "produto" ? "Fraldas" : "",
+      tamanho: "",
+    });
+  };
+
+  const handleSaveImport = async () => {
+    if (!token || !importForm) return;
+    setImportSaving(true);
+    try {
+      const payload: any = {
+        asin: importForm.asin || null,
+        nome: importForm.nome,
+        descricao: importForm.descricao || null,
+        imagem_url: importForm.imagem_url || null,
+        produto_url: importForm.produto_url || null,
+        categoria: importForm.categoria || null,
+        preco_atual: importForm.preco_atual === "" ? null : Number(importForm.preco_atual),
+        preco_anterior: importForm.preco_anterior === "" ? null : Number(importForm.preco_anterior),
+        quantidade_desejada: Number(importForm.quantidade_desejada) || 1,
+        ativo: !!importForm.ativo,
+      };
+      if (importTipo === "produto") {
+        payload.tamanho = importForm.tamanho || null;
+        payload.ordem_exibicao = Number(importForm.ordem_exibicao) || 0;
+        if (importExistingId) {
+          await updateAdminProduto(token, importExistingId, payload);
+        } else {
+          await criarProdutoApi(token, payload);
+        }
+      } else {
+        if (importExistingId) {
+          await updateAdminMimo(token, importExistingId, payload);
+        } else {
+          await criarMimoApi(token, payload);
+        }
+      }
+      showToast(importExistingId ? "Produto atualizado com sucesso!" : "Produto importado para o catálogo!");
+      setImportForm(null);
+      setImportExistingId(null);
+      // Recarrega os catálogos para refletir o novo item
+      const [p, m] = await Promise.all([fetchAdminProdutos(token), fetchAdminMimos(token)]);
+      setProdutos(p);
+      setMimos(m);
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar produto");
+    } finally {
+      setImportSaving(false);
+    }
+  };
+
+  const handleSyncLote = async (tipo: "produtos" | "mimos" | "todos") => {
+    if (!token) return;
+    if (!confirm(`Sincronizar ${tipo === "todos" ? "TODO o catálogo" : tipo} com a Amazon via Scavio?\n\nCada item com ASIN consome 1 crédito. Itens com preço/imagem "MANUAL" são preservados.`)) return;
+    setSyncLoading(tipo);
+    setSyncResult(null);
+    try {
+      const res = await syncScavioLoteApi(token, tipo);
+      setSyncResult(res);
+      showToast(`Sincronização concluída: ${res.sincronizados} atualizados, ${res.sem_asin} sem ASIN, ${res.erros} erros.`);
+      // Recarrega catálogos para refletir preços/imagens atualizados
+      const [p, m] = await Promise.all([fetchAdminProdutos(token), fetchAdminMimos(token)]);
+      setProdutos(p);
+      setMimos(m);
+    } catch (err: any) {
+      showToast(err.message || "Erro na sincronização");
+    } finally {
+      setSyncLoading(null);
+    }
+  };
+
+  const handleSyncItem = async (tipo: "produto" | "mimo", id: number) => {
+    if (!token) return;
+    setSyncLoading(`${tipo}-${id}`);
+    try {
+      const res = await syncScavioItemApi(token, tipo, id);
+      showToast(
+        res.status === "sincronizado"
+          ? `${tipo === "produto" ? "Produto" : "Mimo"} sincronizado: ${res.alterados?.join(", ") || "sem alterações"}`
+          : res.status === "sem_asin" ? "Item sem ASIN — cadastre o ASIN para sincronizar."
+          : res.status === "nao_encontrado" ? "Produto não encontrado na Amazon."
+          : `Erro: ${res.erro || res.status}`
+      );
+      const [p, m] = await Promise.all([fetchAdminProdutos(token), fetchAdminMimos(token)]);
+      setProdutos(p);
+      setMimos(m);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao sincronizar");
+    } finally {
+      setSyncLoading(null);
+    }
+  };
+
   // ================= LOGIN SCREEN =================
   if (!token) {
     return (
@@ -351,7 +505,7 @@ export default function AdminPage() {
             </div>
             <h1 className="text-2xl font-black text-[#42677D]">Painel do Casal</h1>
             <p className="text-xs text-slate-500 mt-1">
-              Acesso exclusivo para Talia & Lucas administrarem o Chá de Rifa do Lael.
+              Acesso exclusivo para Talia & Lucas administrarem o Chá Rifa do Lael.
             </p>
           </div>
 
@@ -422,7 +576,7 @@ export default function AdminPage() {
             <Link href="/" className="flex items-center gap-2">
               <span className="text-2xl">👶</span>
               <span className="font-extrabold text-[#42677D] text-sm sm:text-base">
-                Chá de Rifa do Lael <span className="text-xs font-normal text-slate-500">| Painel</span>
+                Chá Rifa do Lael <span className="text-xs font-normal text-slate-500">| Painel</span>
               </span>
             </Link>
           </div>
@@ -449,6 +603,8 @@ export default function AdminPage() {
             { id: "reservas", label: "Reservas & Comprovantes", icon: "📋" },
             { id: "presentes", label: "Presentes Principais", icon: "🎁" },
             { id: "mimos", label: "Mimos Complementares", icon: "🧸" },
+            { id: "amazon", label: "Buscar produtos Amazon", icon: "🔎" },
+            { id: "personalizar", label: "Personalizar Site", icon: "🎨" },
             { id: "config", label: "Configurações & Pix", icon: "⚙️" },
             { id: "export", label: "Relatórios & Exportar", icon: "📥" },
             { id: "auditoria", label: "Histórico de Auditoria", icon: "🔍" },
@@ -476,7 +632,7 @@ export default function AdminPage() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-black text-[#42677D]">Visão Geral do Chá de Rifa</h2>
+                <h2 className="text-xl font-black text-[#42677D]">Visão Geral do Chá Rifa</h2>
                 <p className="text-xs text-slate-500">Acompanhamento em tempo real das reservas e arrecadação.</p>
               </div>
               <button
@@ -704,7 +860,12 @@ export default function AdminPage() {
 
                             <td className="p-3">
                               <span className="font-medium text-slate-800 block truncate max-w-[140px]">{r.presente_nome}</span>
-                              <span className="text-[10px] text-slate-500">
+                              {r.presente_tamanho && (
+                                <span className="text-[9px] font-black text-[#D99A7B] bg-[#D99A7B]/10 px-1.5 py-0.5 rounded-full">
+                                  Fralda {r.presente_tamanho}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-500 block">
                                 {r.forma_presente === "amazon" ? "📦 Amazon" : r.forma_presente === "local" ? "🛍️ Loja Física" : `💸 Pix (R$ ${r.preco_presente_reserva.toFixed(2)})`}
                               </span>
                             </td>
@@ -861,7 +1022,7 @@ export default function AdminPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-black text-[#42677D]">Fraldas (Lista da Talia)</h2>
-                <p className="text-xs text-slate-500">Cada número equivale a uma fralda; os grupos seguem a ordem por tamanho (editável pelo administrador).</p>
+                <p className="text-xs text-slate-500">Cada número equivale a uma fralda de tamanho fixo: RN 01–05, P 06–35, M 36–65, G 66–100. O tamanho de cada número não pode ser alterado manualmente.</p>
               </div>
               <button
                 onClick={handleRegenerarFaixas}
@@ -981,6 +1142,16 @@ export default function AdminPage() {
                       >
                         {editingProdutoId === p.id ? "Fechar" : "Editar"}
                       </button>
+                      {p.asin && (
+                        <button
+                          onClick={() => handleSyncItem("produto", p.id)}
+                          disabled={syncLoading === `produto-${p.id}`}
+                          title="Sincronizar preço/imagem com a Amazon (Scavio)"
+                          className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          {syncLoading === `produto-${p.id}` ? "..." : "🔄 Sync"}
+                        </button>
+                      )}
 
                       {p.produto_url && (
                         <a
@@ -1167,6 +1338,16 @@ export default function AdminPage() {
                       >
                         {editingMimoId === m.id ? "Fechar" : "Editar"}
                       </button>
+                      {m.asin && (
+                        <button
+                          onClick={() => handleSyncItem("mimo", m.id)}
+                          disabled={syncLoading === `mimo-${m.id}`}
+                          title="Sincronizar preço/imagem com a Amazon (Scavio)"
+                          className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          {syncLoading === `mimo-${m.id}` ? "..." : "🔄 Sync"}
+                        </button>
+                      )}
 
                       {m.produto_url && (
                         <a
@@ -1261,6 +1442,245 @@ export default function AdminPage() {
         )}
 
         {/* ================= TAB: CONFIGURAÇÕES & PIX ================= */}
+        {/* ================= TAB: BUSCAR PRODUTOS AMAZON (SCAVIO) ================= */}
+        {activeTab === "amazon" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-xl font-black text-[#42677D]">Buscar produtos Amazon</h2>
+              <p className="text-xs text-slate-500">
+                Pesquise por nome, palavra-chave, ASIN ou URL da Amazon. Cada busca consome 1 crédito da Scavio (cache de 5 min evita duplicatas).
+                {scavioCredits !== null && <span className="ml-2 font-bold text-emerald-700">Créditos restantes: {scavioCredits}</span>}
+                {scavioCached && <span className="ml-2 text-amber-700 font-semibold">(resultado do cache)</span>}
+              </p>
+            </div>
+
+            {/* Status da integração */}
+            {scavioStatus && scavioStatus.status !== "configurada" && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <strong>{scavioStatus.status === "desativada" ? "Integração Scavio desativada." : "Scavio ativada, mas sem API Key."}</strong>
+                  <p className="mt-0.5">
+                    {scavioStatus.status === "desativada"
+                      ? "Defina SCAVIO_ENABLED=true e SCAVIO_API_KEY nas variáveis de ambiente (Render) para habilitar a busca."
+                      : "Configure SCAVIO_API_KEY nas Environment Variables do Render. A chave nunca é exibida aqui."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Campo de busca */}
+            <form onSubmit={handleScavioSearch} className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={scavioQuery}
+                onChange={(e) => setScavioQuery(e.target.value)}
+                placeholder="Ex.: Fralda Pampers RN, Lenço umedecido bebê, B0GRVFY42Q ou URL da Amazon..."
+                maxLength={500}
+                className="flex-1 px-4 py-2.5 text-sm bg-white rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-[#42677D]/30"
+                disabled={isLoading || !scavioStatus?.configured}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !scavioQuery.trim() || !scavioStatus?.configured}
+                className="px-5 py-2.5 rounded-xl bg-[#42677D] hover:bg-[#35566a] disabled:opacity-50 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                Pesquisar
+              </button>
+            </form>
+
+            {/* Resultados */}
+            {scavioSearched && scavioResults.length === 0 && !isLoading && (
+              <p className="text-sm text-slate-500 text-center py-8 bg-white rounded-2xl border border-slate-100">
+                Nenhum produto encontrado. Tente outro termo, ASIN ou URL.
+              </p>
+            )}
+
+            {scavioResults.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {scavioResults.map((p, idx) => (
+                  <div key={p.asin || idx} className="bg-white rounded-2xl border border-slate-200 p-3 flex flex-col gap-2">
+                    <div className="flex gap-3">
+                      {p.imagem_url ? (
+                        <img src={p.imagem_url} alt={p.nome || "produto"} className="w-16 h-16 object-contain rounded-lg bg-slate-50 border border-slate-100 shrink-0" />
+                      ) : (
+                        <div className="w-16 h-16 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center text-2xl shrink-0">📦</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800 line-clamp-2">{p.nome || "Sem título"}</p>
+                        <p className="text-sm font-black text-[#42677D] mt-0.5">
+                          {p.preco != null ? `R$ ${p.preco.toFixed(2).replace(".", ",")}` : "Preço sob consulta"}
+                          {p.moeda && p.moeda !== "BRL" && <span className="text-[10px] text-slate-400 ml-1">{p.moeda}</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {p.asin && <span className="font-mono">ASIN: {p.asin}</span>}
+                          {p.avaliacao != null && <span> · ★ {p.avaliacao.toFixed(1)}</span>}
+                          {p.total_avaliacoes != null && <span> ({p.total_avaliacoes})</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-auto pt-1">
+                      {p.url && (
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#42677D] hover:underline flex items-center gap-0.5">
+                          <ExternalLink className="w-3 h-3" /> Ver na Amazon
+                        </a>
+                      )}
+                      <button
+                        onClick={() => openImportForm(p)}
+                        className="ml-auto px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Importar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sincronização do catálogo (preços/imagens via Scavio) */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4">
+              <h3 className="text-sm font-black text-[#42677D] mb-1">Sincronizar catálogo com a Amazon</h3>
+              <p className="text-[11px] text-slate-500 mb-3">
+                Atualiza preço e imagem dos produtos com ASIN via Scavio (1 crédito por item). Itens com origem MANUAL são preservados. Nunca altera reservas, quantidades ou números.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => handleSyncLote("produtos")} disabled={!!syncLoading || !scavioStatus?.configured} className="px-3 py-2 rounded-xl bg-[#B9D8E8] hover:bg-[#a5c8dc] disabled:opacity-50 text-[#42677D] text-xs font-bold cursor-pointer">
+                  {syncLoading === "produtos" ? "Sincronizando..." : "🔄 Fraldas"}
+                </button>
+                <button onClick={() => handleSyncLote("mimos")} disabled={!!syncLoading || !scavioStatus?.configured} className="px-3 py-2 rounded-xl bg-[#B9D8E8] hover:bg-[#a5c8dc] disabled:opacity-50 text-[#42677D] text-xs font-bold cursor-pointer">
+                  {syncLoading === "mimos" ? "Sincronizando..." : "🔄 Mimos"}
+                </button>
+                <button onClick={() => handleSyncLote("todos")} disabled={!!syncLoading || !scavioStatus?.configured} className="px-3 py-2 rounded-xl bg-[#42677D] hover:bg-[#35566a] disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+                  {syncLoading === "todos" ? "Sincronizando..." : "🔄 Sincronizar tudo"}
+                </button>
+              </div>
+              {syncResult && (
+                <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
+                  <strong>Última sincronização ({syncResult.tipo}):</strong> {syncResult.sincronizados} atualizados · {syncResult.sem_alteracoes} sem alterações · {syncResult.sem_asin} sem ASIN · {syncResult.erros} erros
+                  {syncResult.itens.filter((i) => i.status === "erro" || i.status === "nao_encontrado").length > 0 && (
+                    <ul className="mt-1 list-disc list-inside text-rose-700">
+                      {syncResult.itens.filter((i) => i.status === "erro" || i.status === "nao_encontrado").slice(0, 8).map((i) => (
+                        <li key={`${i.tipo}-${i.id}`}>{i.tipo} #{i.id} ({i.asin || "sem ASIN"}): {i.erro || i.status}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Formulário de importação/edição */}
+            {importForm && (
+              <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setImportForm(null)}>
+                <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-black text-[#42677D]">
+                      {importExistingId ? "Atualizar produto existente" : "Importar para o catálogo"}
+                    </h3>
+                    <button onClick={() => setImportForm(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  {importExistingId && (
+                    <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                      ⚠️ Este ASIN já está cadastrado. Ao salvar, os dados serão <strong>atualizados</strong> — revise antes de confirmar.
+                    </div>
+                  )}
+
+                  {/* Destino: produto principal (fralda) ou mimo */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-bold text-[#42677D] mb-1">Importar como</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["produto", "mimo"] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setImportTipo(t)}
+                          className={`py-2 rounded-xl text-xs font-bold border-2 cursor-pointer ${
+                            importTipo === t ? "border-[#42677D] bg-[#B9D8E8]/30 text-[#42677D]" : "border-slate-200 text-slate-500"
+                          }`}
+                        >
+                          {t === "produto" ? "🎁 Produto principal (fralda)" : "🧸 Mimo"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Nome *</label>
+                      <input value={importForm.nome} onChange={(e) => setImportForm({ ...importForm, nome: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Preço (R$)</label>
+                        <input type="number" step="0.01" value={importForm.preco_atual} onChange={(e) => setImportForm({ ...importForm, preco_atual: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Preço anterior (R$)</label>
+                        <input type="number" step="0.01" value={importForm.preco_anterior} onChange={(e) => setImportForm({ ...importForm, preco_anterior: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">ASIN</label>
+                        <input value={importForm.asin} onChange={(e) => setImportForm({ ...importForm, asin: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200 font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 mb-1">Qtd. desejada</label>
+                        <input type="number" min="1" value={importForm.quantidade_desejada} onChange={(e) => setImportForm({ ...importForm, quantidade_desejada: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                      </div>
+                    </div>
+                    {importTipo === "produto" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">Categoria</label>
+                          <input value={importForm.categoria} onChange={(e) => setImportForm({ ...importForm, categoria: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" placeholder="Fraldas" />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">Tamanho (RN/P/M/G)</label>
+                          <input value={importForm.tamanho} onChange={(e) => setImportForm({ ...importForm, tamanho: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" placeholder="Ex.: P" />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Imagem (URL)</label>
+                      <input value={importForm.imagem_url} onChange={(e) => setImportForm({ ...importForm, imagem_url: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Link do produto (afiliado)</label>
+                      <input value={importForm.produto_url} onChange={(e) => setImportForm({ ...importForm, produto_url: e.target.value })} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" placeholder="https://www.amazon.com.br/dp/... ?tag=projetolael-20" />
+                      <p className="text-[10px] text-slate-400 mt-0.5">Gerado com Associate Tag: {scavioStatus?.associate_tag || "projetolael-20"} — editável manualmente.</p>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Descrição</label>
+                      <textarea value={importForm.descricao} onChange={(e) => setImportForm({ ...importForm, descricao: e.target.value })} rows={3} className="w-full px-3 py-2 text-xs bg-slate-50 rounded-xl border border-slate-200" />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-slate-700">
+                      <input type="checkbox" checked={importForm.ativo} onChange={(e) => setImportForm({ ...importForm, ativo: e.target.checked })} className="rounded" />
+                      Produto ativo (visível no site)
+                    </label>
+                  </div>
+
+                  <div className="flex gap-2 mt-5">
+                    <button onClick={() => setImportForm(null)} className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-600 cursor-pointer">Cancelar</button>
+                    <button
+                      onClick={handleSaveImport}
+                      disabled={importSaving || !importForm.nome.trim()}
+                      className="flex-1 py-2.5 rounded-xl bg-[#42677D] hover:bg-[#35566a] disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                    >
+                      {importSaving ? "Salvando..." : importExistingId ? "Atualizar produto" : "Salvar no catálogo"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= TAB: PERSONALIZAR SITE ================= */}
+        {activeTab === "personalizar" && token && <SiteSettingsPanel token={token} />}
+
+        {/* ================= TAB: CONFIG ================= */}
         {activeTab === "config" && (
           <div className="space-y-4 max-w-2xl">
             <div>

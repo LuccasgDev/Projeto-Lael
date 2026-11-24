@@ -1,6 +1,6 @@
 # Manual de Administração do Casal — Talia & Lucas 👶❤️
 
-Bem-vindos ao manual de uso do **Chá de Rifa do Lael**!
+Bem-vindos ao manual de uso do **Chá Rifa do Lael**!
 
 Este guia foi elaborado especialmente para vocês dois acompanharem, conferirem e confirmarem as contribuições de familiares e amigos com total facilidade, diretamente pelo celular ou computador, sem complicações técnicas.
 

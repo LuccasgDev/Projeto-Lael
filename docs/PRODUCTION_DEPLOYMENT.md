@@ -1,6 +1,6 @@
 # Guia de Publicação e Deploy em Produção
 
-Este guia detalha o processo completo para implantar o **Chá de Rifa do Lael** em um ambiente de produção seguro, com HTTPS, banco de dados PostgreSQL e rotinas de backup automatizadas.
+Este guia detalha o processo completo para implantar o **Chá Rifa do Lael** em um ambiente de produção seguro, com HTTPS, banco de dados PostgreSQL e rotinas de backup automatizadas.
 
 ---
 

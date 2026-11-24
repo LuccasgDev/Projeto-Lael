@@ -14,6 +14,7 @@ from backend.app.models.models import (
 from backend.app.schemas.schemas import ReservaCreateRequest
 from backend.app.services.stock_service import get_mimo_stock_info
 from backend.app.services.expiration_worker import check_and_expire_reservations
+from backend.app.services.numero_regra import classificar_numero, resolver_mimo_fixo
 
 
 def hash_tracking_token(token: str) -> str:
@@ -38,7 +39,8 @@ def build_whatsapp_message(
     mimo_nome: str,
     chave_pix: str,
     titular_pix: str,
-    banco_pix: str
+    banco_pix: str,
+    tamanho_fralda: str = ""
 ) -> tuple[str, str]:
     """
     Builds friendly WhatsApp message and click-to-chat URL.
@@ -55,18 +57,22 @@ def build_whatsapp_message(
     forma_mimo_desc = _format_forma(reserva.forma_mimo, reserva.preco_mimo_reserva)
 
     msg_lines = [
-        "👶 *CHÁ DE RIFA DO LAEL*",
+        "👶 *CHÁ RIFA DO LAEL*",
         "Olá, Talia e Lucas! Acabei de reservar meu número na rifa:",
         "",
         f"🔢 *Número:* {numero_val:02d}",
         f"👤 *Nome:* {reserva.nome_convidado}",
+    ]
+    if tamanho_fralda:
+        msg_lines.append(f"🍼 *Tamanho da Fralda:* {tamanho_fralda}")
+    msg_lines.extend([
         "",
         "🎁 *ESCOLHAS:*",
-        f"• *Presente Principal:* {presente_nome}",
+        f"• *Fralda:* {presente_nome}",
         f"  Forma: {forma_pres_desc}",
-        f"• *Mimo Complementar:* {mimo_nome}",
+        f"• *Mimo:* {mimo_nome}",
         f"  Forma: {forma_mimo_desc}",
-    ]
+    ])
 
     if reserva.valor_pix_total > 0:
         msg_lines.extend([
@@ -94,6 +100,14 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
     # 0. Expire overdue reservations first (never depends on the browser)
     check_and_expire_reservations(db)
 
+    # 0b. Site settings: block new reservations when raffle/reservations are off
+    from backend.app.services.site_settings import get_setting as _get_site_setting
+    if not _get_site_setting(db, "site.reserva.ativa", True) or not _get_site_setting(db, "site.evento.rifa_ativa", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="As reservas estão temporariamente encerradas. Tente novamente mais tarde."
+        )
+
     # 1. Check and lock the chosen number
     numero_query = db.query(Numero).filter(Numero.id == payload.numero_id)
     if not settings.DATABASE_URL.startswith("sqlite"):
@@ -112,25 +126,54 @@ def create_reservation(db: Session, payload: ReservaCreateRequest) -> Reserva:
             detail=f"O número {numero.numero:02d} não está mais disponível para reserva"
         )
 
-    # 2. Check main product
+    # 2. Check main product — a fralda é DEFINIDA pela faixa fixa do número
+    #    (RN 01-05, P 06-35, M 36-65, G 66-100); o participante não escolhe.
+    try:
+        classificacao = classificar_numero(numero.numero)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este número está fora da faixa da rifa (01 a 100)"
+        )
     produto = numero.produto_principal
     if not produto or not produto.ativo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="O número selecionado não possui um presente principal ativo configurado"
+            detail="O número selecionado não possui uma fralda ativa configurada"
         )
-
-    # 3. Check mimo stock
-    mimo_query = db.query(Mimo).filter(Mimo.id == payload.mimo_id)
-    if not settings.DATABASE_URL.startswith("sqlite"):
-        mimo_query = mimo_query.with_for_update()
-
-    mimo = mimo_query.first()
-    if not mimo or not mimo.ativo:
+    if produto.tamanho and produto.tamanho != classificacao["tamanho"]:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Mimo selecionado não encontrado ou inativo"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configuração inconsistente: a fralda do número não corresponde à faixa fixa. Avise o casal."
         )
+
+    # 3. Check mimo — REGRA FIXA: fora da faixa M, o mimo é definido pelo número
+    #    e qualquer mimo_id divergente enviado pelo cliente é rejeitado.
+    if classificacao["mimo_modo"] == "fixo":
+        mimo_fixo = resolver_mimo_fixo(db, classificacao["tamanho"])
+        if not mimo_fixo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"O mimo fixo do tamanho {classificacao['tamanho']} não está cadastrado. Avise o casal."
+            )
+        if payload.mimo_id != mimo_fixo.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"O número {numero.numero:02d} (fralda {classificacao['tamanho']}) tem mimo fixo: "
+                       f"'{mimo_fixo.nome}'. A escolha de mimo só é livre na faixa M."
+            )
+        mimo = mimo_fixo
+    else:
+        mimo_query = db.query(Mimo).filter(Mimo.id == payload.mimo_id)
+        if not settings.DATABASE_URL.startswith("sqlite"):
+            mimo_query = mimo_query.with_for_update()
+
+        mimo = mimo_query.first()
+        if not mimo or not mimo.ativo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Mimo selecionado não encontrado ou inativo"
+            )
 
     # RN-08 v2: Pix exige preço conhecido — não é possível congelar um valor nulo
     if payload.forma_presente == "pix" and produto.preco_atual is None:

@@ -13,7 +13,7 @@ export default function Navbar() {
           </div>
           <div>
             <span className="font-bold text-lg text-[#42677D] tracking-tight block leading-tight">
-              Chá de Rifa do Lael
+              Chá Rifa do Lael
             </span>
             <span className="text-xs text-[#29343A]/70 flex items-center gap-1">
               <span>Fortaleza — CE</span>

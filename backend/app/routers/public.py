@@ -17,6 +17,7 @@ from backend.app.services.stock_service import get_mimo_stock_info, get_produto_
 from backend.app.services.expiration_worker import check_and_expire_reservations
 from backend.app.services.reservation_service import hash_tracking_token
 from backend.app.services.rate_limit import reserve_limiter, enforce_rate_limit
+from backend.app.services.numero_regra import classificar_numero, resolver_mimo_fixo
 
 router = APIRouter(prefix="/public", tags=["Público"])
 
@@ -27,7 +28,7 @@ def get_public_config(db: Session = Depends(get_db)):
     Returns public event configuration (Pix details, couple contact, event date).
     """
     return PublicConfigResponse(
-        nome_evento=get_config_value(db, "nome_evento", "Chá de Rifa do Lael"),
+        nome_evento=get_config_value(db, "nome_evento", "Chá Rifa do Lael"),
         data_evento=get_config_value(db, "data_evento", "Março de 2027"),
         whatsapp_casal=get_config_value(db, "whatsapp_casal", "85999998888"),
         chave_pix=get_config_value(db, "chave_pix", "lael2027@chaderifa.com.br"),
@@ -36,7 +37,7 @@ def get_public_config(db: Session = Depends(get_db)):
         banco_pix=get_config_value(db, "banco_pix", "Nubank"),
         prazo_padrao_horas=int(get_config_value(db, "prazo_padrao_horas", "72")),
         total_numeros=int(get_config_value(db, "total_numeros", "100")),
-        mensagem_inicial=get_config_value(db, "mensagem_inicial", "Sejam muito bem-vindos ao Chá de Rifa do Lael!"),
+        mensagem_inicial=get_config_value(db, "mensagem_inicial", "Sejam muito bem-vindos ao Chá Rifa do Lael!"),
         mensagem_confirmacao=get_config_value(db, "mensagem_confirmacao", "Obrigado por celebrar esse momento conosco!"),
     )
 
@@ -49,8 +50,14 @@ def get_numbers_grid(db: Session = Depends(get_db)):
     """
     check_and_expire_reservations(db)
     numeros = db.query(Numero).order_by(Numero.numero.asc()).all()
-    result = []
 
+    # Mimos fixos por tamanho resolvidos uma única vez (evita N+1 queries)
+    mimos_fixos = {
+        tam: resolver_mimo_fixo(db, tam)
+        for tam in ("RN", "P", "G")
+    }
+
+    result = []
     for n in numeros:
         nome_pub = None
         if n.status in ["reservado", "confirmado"]:
@@ -68,6 +75,17 @@ def get_numbers_grid(db: Session = Depends(get_db)):
 
         prod_nome = n.produto_principal.nome if n.produto_principal else None
         prod_img = n.produto_principal.imagem_url if n.produto_principal else None
+        prod_tamanho = n.produto_principal.tamanho if n.produto_principal else None
+
+        # Regra fixa: mimo do número vem da classificação central (RN/P/G fixo, M livre)
+        mimo_nome = None
+        try:
+            classif = classificar_numero(n.numero)
+            if classif["mimo_modo"] == "fixo":
+                mimo_fixo = mimos_fixos.get(classif["tamanho"])
+                mimo_nome = mimo_fixo.nome if mimo_fixo else classif["mimo_nome_padrao"]
+        except ValueError:
+            pass
 
         result.append(NumeroGridItem(
             id=n.id,
@@ -76,8 +94,9 @@ def get_numbers_grid(db: Session = Depends(get_db)):
             nome_publico=nome_pub,
             produto_id=n.produto_principal_id,
             produto_nome=prod_nome,
-            produto_tamanho=n.produto_principal.tamanho if n.produto_principal else None,
-            produto_imagem=prod_img
+            produto_tamanho=prod_tamanho,
+            produto_imagem=prod_img,
+            mimo_nome=mimo_nome
         ))
 
     return result
@@ -112,11 +131,34 @@ def get_number_detail(num: int, db: Session = Depends(get_db)):
             disponibilidade_restante=stock["disponibilidade_restante"]
         )
 
+    # Regra fixa número → fralda + mimo (mesma classificação do backend)
+    classif = classificar_numero(numero.numero)
+    mimo_fixo_public = None
+    if classif["mimo_modo"] == "fixo":
+        mimo_fixo = resolver_mimo_fixo(db, classif["tamanho"])
+        if mimo_fixo:
+            stock_mimo = get_mimo_stock_info(db, mimo_fixo)
+            mimo_fixo_public = MimoPublic(
+                id=mimo_fixo.id,
+                asin=mimo_fixo.asin,
+                nome=mimo_fixo.nome,
+                descricao=mimo_fixo.descricao,
+                imagem_url=mimo_fixo.imagem_url,
+                produto_url=mimo_fixo.produto_url,
+                categoria=mimo_fixo.categoria,
+                preco_atual=mimo_fixo.preco_atual,
+                preco_anterior=mimo_fixo.preco_anterior,
+                preco_sincronizado_em=mimo_fixo.preco_sincronizado_em,
+                disponibilidade_restante=stock_mimo["disponibilidade_restante"]
+            )
+
     return NumeroDetailResponse(
         id=numero.id,
         numero=numero.numero,
         status=numero.status,
-        produto_principal=prod_public
+        produto_principal=prod_public,
+        mimo_livre=classif["mimo_modo"] == "escolha",
+        mimo_fixo=mimo_fixo_public
     )
 
 
@@ -172,7 +214,8 @@ def make_reservation(payload: ReservaCreateRequest, request: Request, db: Sessio
         mimo_nome=mimo_nome,
         chave_pix=chave_pix,
         titular_pix=titular_pix,
-        banco_pix=banco_pix
+        banco_pix=banco_pix,
+        tamanho_fralda=reserva.numero.produto_principal.tamanho if reserva.numero.produto_principal else ""
     )
 
     clean_phone = "".join(filter(str.isdigit, whatsapp_casal))
@@ -244,7 +287,8 @@ def get_reservation_status(reserva_id: int, db: Session = Depends(get_db)):
         mimo_nome=mimo_nome,
         chave_pix=chave_pix,
         titular_pix=titular_pix,
-        banco_pix=banco_pix
+        banco_pix=banco_pix,
+        tamanho_fralda=reserva.numero.produto_principal.tamanho if reserva.numero.produto_principal else ""
     )
 
     clean_phone = "".join(filter(str.isdigit, whatsapp_casal))
@@ -317,7 +361,8 @@ def get_reservation_by_tracking_token(token: str, db: Session = Depends(get_db))
         mimo_nome=mimo_nome,
         chave_pix=chave_pix,
         titular_pix=titular_pix,
-        banco_pix=banco_pix
+        banco_pix=banco_pix,
+        tamanho_fralda=reserva.numero.produto_principal.tamanho if reserva.numero.produto_principal else ""
     )
 
     clean_phone = "".join(filter(str.isdigit, whatsapp_casal))

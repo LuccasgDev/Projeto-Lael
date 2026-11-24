@@ -24,7 +24,7 @@ from backend.app.services.reservation_service import (
 )
 from backend.app.services.amazon_service import manual_update_price
 from backend.app.services.export_service import generate_reservations_export, generate_pix_report
-from backend.app.data.seed_data import gerar_faixas_fraldas
+from backend.app.services.numero_regra import FAIXAS_NUMEROS, fralda_para_tamanho, classificar_numero
 
 router = APIRouter(prefix="/admin", tags=["Administração"])
 
@@ -356,6 +356,12 @@ def update_produto_principal(
     if not produto:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
 
+    # Edição manual marca origem MANUAL — a sincronização Scavio passa a
+    # preservar esses campos até nova sincronização forçada.
+    if produto.imagem_url != payload.imagem_url:
+        produto.imagem_origem = "MANUAL"
+    if produto.preco_atual != payload.preco_atual:
+        produto.preco_origem = "MANUAL"
     produto.asin = payload.asin
     produto.nome = payload.nome.strip()
     produto.descricao = payload.descricao
@@ -455,6 +461,11 @@ def update_mimo(
     if not mimo:
         raise HTTPException(status_code=404, detail="Mimo não encontrado")
 
+    # Edição manual marca origem MANUAL (mesma regra dos produtos)
+    if mimo.imagem_url != payload.imagem_url:
+        mimo.imagem_origem = "MANUAL"
+    if mimo.preco_atual != payload.preco_atual:
+        mimo.preco_origem = "MANUAL"
     mimo.asin = payload.asin
     mimo.nome = payload.nome.strip()
     mimo.descricao = payload.descricao
@@ -587,6 +598,7 @@ def list_numeros(
             "status": n.status,
             "produto_principal_id": n.produto_principal_id,
             "produto_nome": n.produto_principal.nome if n.produto_principal else None,
+            "produto_tamanho": n.produto_principal.tamanho if n.produto_principal else None,
         }
         for n in numeros
     ]
@@ -667,8 +679,11 @@ def update_numero(
     admin: Admin = Depends(get_current_admin)
 ):
     """
-    Reatribui a fralda de um número (só quando disponível) — RN-01 v2:
-    ordem/quantidades são editáveis sem afetar reservas existentes.
+    Reatribui a fralda de um número (só quando disponível).
+
+    REGRA FIXA: o tamanho da fralda é determinado pela faixa do número
+    (RN 01-05, P 06-35, M 36-65, G 66-100) e NÃO pode ser alterado
+    manualmente — só é aceito um produto cujo tamanho corresponda à faixa.
     """
     numero = db.query(Numero).filter(Numero.id == numero_id).first()
     if not numero:
@@ -681,6 +696,13 @@ def update_numero(
         produto = db.query(ProdutoPrincipal).filter(ProdutoPrincipal.id == novo_produto_id).first()
         if not produto:
             raise HTTPException(status_code=404, detail="Fralda não encontrada")
+        tamanho_esperado = classificar_numero(numero.numero)["tamanho"]
+        if produto.tamanho and produto.tamanho != tamanho_esperado:
+            raise HTTPException(
+                status_code=400,
+                detail=f"O número {numero.numero:02d} é da faixa {tamanho_esperado} (regra fixa). "
+                       f"Não é possível associá-lo a uma fralda {produto.tamanho}."
+            )
         numero.produto_principal_id = produto.id
 
     db.add(HistoricoAdmin(
@@ -699,29 +721,22 @@ def regenerar_faixas_numeros(
     admin: Admin = Depends(get_current_admin)
 ):
     """
-    RN-01 v2: reagrupar os números em faixas contínuas por fralda, na ordem
-    de `ordem_exibicao`, usando as `quantidade_desejada` atuais.
+    Reaplica a distribuição FIXA de números por tamanho de fralda
+    (RN 01-05 · P 06-35 · M 36-65 · G 66-100 — regra central numero_regra).
 
+    - A associação número → fralda é sempre derivada da faixa do número,
+      nunca de quantidades digitadas; o administrador NÃO altera tamanho
+      por número.
     - Só números 'disponivel' são reatribuídos; 'reservado', 'confirmado' e
       'compra_externa' NUNCA são tocados (reservas existentes preservadas).
-    - Números disponíveis fora das novas faixas ficam sem fralda
-      (produto_principal_id = NULL) até ajuste manual.
+    - Números cuja faixa não tem fralda ativa correspondente ficam sem
+      fralda (produto_principal_id = NULL) até o cadastro ser regularizado.
     """
-    fraldas = (
-        db.query(ProdutoPrincipal)
-        .filter(ProdutoPrincipal.ativo == True, ProdutoPrincipal.categoria == "Fraldas")
-        .order_by(ProdutoPrincipal.ordem_exibicao.asc(), ProdutoPrincipal.id.asc())
-        .all()
-    )
-    if not fraldas:
-        raise HTTPException(status_code=400, detail="Nenhuma fralda ativa cadastrada.")
-
-    faixas = gerar_faixas_fraldas(fraldas)
-    # mapa numero -> fralda_id
     mapa = {}
-    for faixa in faixas:
+    for faixa in FAIXAS_NUMEROS:
+        fralda = fralda_para_tamanho(db, faixa["tamanho"])
         for num in range(faixa["inicio"], faixa["fim"] + 1):
-            mapa[num] = faixa["fralda"].id
+            mapa[num] = fralda.id if fralda else None
 
     numeros = db.query(Numero).order_by(Numero.numero.asc()).all()
     reatribuidos = 0
@@ -739,15 +754,15 @@ def regenerar_faixas_numeros(
             sem_fralda += 1
 
     resumo_faixas = [
-        {"tamanho": f["fralda"].tamanho or f["fralda"].nome, "inicio": f["inicio"], "fim": f["fim"]}
-        for f in faixas
+        {"tamanho": f["tamanho"], "inicio": f["inicio"], "fim": f["fim"]}
+        for f in FAIXAS_NUMEROS
     ]
     db.add(HistoricoAdmin(
         administrador_id=admin.id,
         acao="FAIXAS_REGERADAS",
         descricao=(
-            f"Faixas de números regeradas por {admin.nome}: "
-            f"{len(faixas)} grupos, {sum(f['fim'] - f['inicio'] + 1 for f in faixas)} posições. "
+            f"Distribuição fixa de números reaplicada por {admin.nome}: "
+            f"{len(FAIXAS_NUMEROS)} faixas, {sum(f['fim'] - f['inicio'] + 1 for f in FAIXAS_NUMEROS)} posições. "
             f"Números reatribuídos: {reatribuidos}. Preservados (reservado/confirmado/compra externa): {preservados}. "
             f"Disponíveis sem fralda: {sem_fralda}."
         ),
